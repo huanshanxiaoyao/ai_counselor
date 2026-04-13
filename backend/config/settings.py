@@ -6,11 +6,23 @@ from pathlib import Path
 
 BASE_DIR = Path(__file__).resolve().parent.parent.parent
 
-SECRET_KEY = os.getenv('DJANGO_SECRET_KEY', 'dev-secret-key-change-in-production')
+# SECURITY WARNING: keep the secret key used in production secret!
+# In production, DJANGO_SECRET_KEY environment variable MUST be set.
+if DEBUG:
+    # Development: use a random key if not set
+    import secrets
+    SECRET_KEY = os.getenv('DJANGO_SECRET_KEY', secrets.token_hex(32))
+else:
+    # Production: MUST have SECRET_KEY set via environment variable
+    SECRET_KEY = os.environ.get('DJANGO_SECRET_KEY')
+    if not SECRET_KEY:
+        raise RuntimeError("DJANGO_SECRET_KEY environment variable must be set in production")
 
+# SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = os.getenv('DEBUG', 'True').lower() == 'true'
 
-ALLOWED_HOSTS = ['*']
+# SECURITY WARNING: configure allowed hosts properly!
+ALLOWED_HOSTS = os.getenv('ALLOWED_HOSTS', 'localhost,127.0.0.1').split(',')
 
 INSTALLED_APPS = [
     'django.contrib.auth',

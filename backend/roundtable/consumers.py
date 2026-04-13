@@ -115,7 +115,7 @@ class DiscussionConsumer(AsyncWebsocketConsumer):
             logger.exception("Error receiving WebSocket message")
             await self.send(text_data=json.dumps({
                 'type': 'error',
-                'message': str(e)
+                'message': '服务器内部错误'
             }))
 
     async def handle_user_message(self, data):

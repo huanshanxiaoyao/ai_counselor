@@ -34,7 +34,7 @@ class Discussion(models.Model):
 
     # 配置
     character_limit = models.IntegerField(default=200)
-    max_rounds = models.IntegerField(default=20)
+    max_rounds = models.IntegerField(default=100)
     token_timeout_seconds = models.IntegerField(default=60)  # 令牌超时时间
 
     # 主持人令牌状态

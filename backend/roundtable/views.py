@@ -135,7 +135,7 @@ class SuggestionsView(View):
             return JsonResponse({'error': '无效的请求格式'}, status=400)
         except Exception as e:
             logger.exception("Error getting character suggestions")
-            return JsonResponse({'error': str(e)}, status=500)
+            return JsonResponse({'error': '服务器内部错误，请稍后重试'}, status=500)
 
 
 class ConfigureView(View):
@@ -154,8 +154,8 @@ class ConfigureView(View):
             if not characters or len(characters) < 3:
                 return JsonResponse({'error': '至少需要选择3个角色'}, status=400)
 
-            if len(characters) > 5:
-                return JsonResponse({'error': '最多只能选择5个角色'}, status=400)
+            if len(characters) > 8:
+                return JsonResponse({'error': '最多只能选择8个角色'}, status=400)
 
             # 机制2：当用户选定角色后，如果没有离线基础设定，则生成并保存离线设定
             def ensure_offline_profile(name: str, era: str):
@@ -213,7 +213,7 @@ class ConfigureView(View):
             return JsonResponse({'error': '无效的请求格式'}, status=400)
         except Exception as e:
             logger.exception("Error configuring characters")
-            return JsonResponse({'error': str(e)}, status=500)
+            return JsonResponse({'error': '服务器内部错误，请稍后重试'}, status=500)
 
 
 class DiscussionView(View):
@@ -415,7 +415,7 @@ class DiscussionStartView(View):
             return JsonResponse({'error': '无效的请求格式'}, status=400)
         except Exception as e:
             logger.exception("Error starting discussion")
-            return JsonResponse({'error': str(e)}, status=500)
+            return JsonResponse({'error': '服务器内部错误，请稍后重试'}, status=500)
 
 
 class DiscussionMessageView(View):
@@ -568,7 +568,7 @@ class DiscussionMessageView(View):
             return JsonResponse({'error': '无效的请求格式'}, status=400)
         except Exception as e:
             logger.exception("Error in discussion message")
-            return JsonResponse({'error': str(e)}, status=500)
+            return JsonResponse({'error': '服务器内部错误，请稍后重试'}, status=500)
 
     def _get_conversation_history(self, discussion, limit=10):
         """获取对话历史"""
@@ -660,7 +660,7 @@ class ProfileListApiView(View):
 
         except Exception as e:
             logger.exception("Error getting profile list")
-            return JsonResponse({'error': str(e)}, status=500)
+            return JsonResponse({'error': '服务器内部错误，请稍后重试'}, status=500)
 
 
 class ProfileDetailApiView(View):
@@ -683,7 +683,7 @@ class ProfileDetailApiView(View):
 
         except Exception as e:
             logger.exception(f"Error getting profile {name}")
-            return JsonResponse({'error': str(e)}, status=500)
+            return JsonResponse({'error': '服务器内部错误，请稍后重试'}, status=500)
 
 
 class CacheStatsApiView(View):
@@ -705,7 +705,7 @@ class CacheStatsApiView(View):
 
         except Exception as e:
             logger.exception("Error getting cache stats")
-            return JsonResponse({'error': str(e)}, status=500)
+            return JsonResponse({'error': '服务器内部错误，请稍后重试'}, status=500)
 
 
 class CacheDeleteApiView(View):
@@ -735,7 +735,7 @@ class CacheDeleteApiView(View):
 
         except Exception as e:
             logger.exception("Error deleting cache entry")
-            return JsonResponse({'error': str(e)}, status=500)
+            return JsonResponse({'error': '服务器内部错误，请稍后重试'}, status=500)
 
 
 class CacheClearApiView(View):
@@ -757,7 +757,7 @@ class CacheClearApiView(View):
 
         except Exception as e:
             logger.exception("Error clearing cache")
-            return JsonResponse({'error': str(e)}, status=500)
+            return JsonResponse({'error': '服务器内部错误，请稍后重试'}, status=500)
 
 
 class CandidateQueueListApiView(View):
@@ -779,7 +779,7 @@ class CandidateQueueListApiView(View):
 
         except Exception as e:
             logger.exception("Error getting candidate queue")
-            return JsonResponse({'error': str(e)}, status=500)
+            return JsonResponse({'error': '服务器内部错误，请稍后重试'}, status=500)
 
 
 class CandidateQueueTriggerApiView(View):
@@ -819,7 +819,7 @@ class CandidateQueueTriggerApiView(View):
 
         except Exception as e:
             logger.exception("Error triggering candidate generation")
-            return JsonResponse({'error': str(e)}, status=500)
+            return JsonResponse({'error': '服务器内部错误，请稍后重试'}, status=500)
 
 
 class CandidateQueueResetApiView(View):
@@ -852,7 +852,7 @@ class CandidateQueueResetApiView(View):
 
         except Exception as e:
             logger.exception("Error resetting candidate count")
-            return JsonResponse({'error': str(e)}, status=500)
+            return JsonResponse({'error': '服务器内部错误，请稍后重试'}, status=500)
 
 
 class CandidateQueueDeleteApiView(View):
@@ -879,7 +879,7 @@ class CandidateQueueDeleteApiView(View):
 
         except Exception as e:
             logger.exception("Error removing candidate")
-            return JsonResponse({'error': str(e)}, status=500)
+            return JsonResponse({'error': '服务器内部错误，请稍后重试'}, status=500)
 
 
 class CandidateQueueClearApiView(View):
@@ -900,7 +900,7 @@ class CandidateQueueClearApiView(View):
 
         except Exception as e:
             logger.exception("Error clearing candidate queue")
-            return JsonResponse({'error': str(e)}, status=500)
+            return JsonResponse({'error': '服务器内部错误，请稍后重试'}, status=500)
 
 
 class HistoryListApiView(View):
@@ -937,7 +937,7 @@ class HistoryListApiView(View):
 
         except Exception as e:
             logger.exception("Error getting history list")
-            return JsonResponse({'error': str(e)}, status=500)
+            return JsonResponse({'error': '服务器内部错误，请稍后重试'}, status=500)
 
 
 class RestartApiView(View):
@@ -1058,4 +1058,4 @@ class RestartApiView(View):
             return JsonResponse({'error': '原讨论不存在'}, status=404)
         except Exception as e:
             logger.exception("Error restarting discussion")
-            return JsonResponse({'error': str(e)}, status=500)
+            return JsonResponse({'error': '服务器内部错误，请稍后重试'}, status=500)
