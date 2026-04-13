@@ -773,6 +773,7 @@
     const messagesHeader = document.getElementById('messages-header');
     const messageInput = document.getElementById('message-input');
     const btnSend = document.getElementById('btn-send');
+    const isObserver = '{{ user_role }}' === 'observer';
     const inputHint = document.getElementById('input-hint');
     const currentRoundEl = document.getElementById('current-round');
     const statusBadge = document.getElementById('status-badge');
@@ -802,6 +803,10 @@
     let currentRound = 0;
     let currentSpeaker = '';
 
+    // WebSocket reconnect state
+    let wsReconnectAttempts = 0;
+    const MAX_WS_RECONNECT_ATTEMPTS = 10;
+
     // Connect WebSocket
     function connectWebSocket() {
         const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
@@ -811,11 +816,20 @@
 
         ws.onopen = () => {
             console.log('WebSocket connected');
+            wsReconnectAttempts = 0;
         };
 
-        ws.onclose = () => {
-            console.log('WebSocket disconnected');
-            setTimeout(connectWebSocket, 3000);
+        ws.onclose = (event) => {
+            console.log('WebSocket disconnected', event.code);
+            // Don't reconnect on normal close (1000) or if max attempts reached
+            if (event.code !== 1000 && wsReconnectAttempts < MAX_WS_RECONNECT_ATTEMPTS) {
+                wsReconnectAttempts++;
+                const delay = Math.min(3000 * Math.pow(2, wsReconnectAttempts - 1), 30000);
+                console.log(`Reconnecting in ${delay}ms (attempt ${wsReconnectAttempts}/${MAX_WS_RECONNECT_ATTEMPTS})`);
+                setTimeout(connectWebSocket, delay);
+            } else if (wsReconnectAttempts >= MAX_WS_RECONNECT_ATTEMPTS) {
+                showNotification('WebSocket 连接失败，请刷新页面重试', 'error');
+            }
         };
 
         ws.onerror = (error) => {
@@ -881,11 +895,13 @@
             showNotification(data.data.message, 'info');
             // 禁用输入
             messageInput.disabled = true;
-            btnSend.disabled = true;
+            if (btnSend) btnSend.disabled = true;
             // 等待一段时间后恢复
             setTimeout(() => {
-                messageInput.disabled = false;
-                btnSend.disabled = false;
+                if (!isObserver && statusText.textContent !== '已结束') {
+                    messageInput.disabled = false;
+                    if (btnSend) btnSend.disabled = false;
+                }
             }, 3000);
 
         } else if (data.type === 'phase_change') {
@@ -898,7 +914,7 @@
             statusText.textContent = '已结束';
             statusBadge.className = 'status-badge finished';
             messageInput.disabled = true;
-            btnSend.disabled = true;
+            if (btnSend) btnSend.disabled = true;
             if (data.data.closing) {
                 addMessageToList({
                     speaker: '主持人',
@@ -1297,7 +1313,7 @@
             const cardHtml = `
                 <div class="participant-card" data-char-id="${char.id}" data-char-name="${escapeHtml(char.name)}">
                     <div class="participant-header">
-                        <div class="participant-avatar">${char.name.charAt(0)}</div>
+                        <div class="participant-avatar">${escapeHtml(char.name.charAt(0))}</div>
                         <div class="participant-info">
                             <h4>${escapeHtml(char.name)}</h4>
                             <span class="era">${escapeHtml(char.era || '')}</span>
@@ -1328,7 +1344,7 @@
 
     function showLoading(text, subtext) {
         isLoading = true;
-        btnSend.disabled = true;
+        if (btnSend) btnSend.disabled = true;
         messageInput.disabled = true;
         loadingText.textContent = text;
         loadingSubtext.textContent = subtext;
@@ -1337,10 +1353,13 @@
 
     function hideLoading() {
         isLoading = false;
-        btnSend.disabled = false;
-        messageInput.disabled = false;
         loadingOverlay.classList.remove('active');
-        messageInput.focus();
+        // Only re-enable input if not in observer mode and discussion is active
+        if (!isObserver && statusText.textContent !== '已结束') {
+            if (btnSend) btnSend.disabled = false;
+            messageInput.disabled = false;
+            messageInput.focus();
+        }
     }
 
     function scrollToBottom() {

@@ -521,14 +521,14 @@
                     <div class="detail-section">
                         <div class="detail-section-title">语言风格</div>
                         <div class="detail-section-content">语气: ${escapeHtml(p.language_style?.tone || '暂无')}
-常用表达: ${(p.language_style?.catchphrases || []).join('、')}
+常用表达: ${(p.language_style?.catchphrases || []).map(cp => escapeHtml(cp)).join('、')}
 说话习惯: ${escapeHtml(p.language_style?.speaking_habits || '暂无')}</div>
                     </div>
                     <div class="detail-section">
                         <div class="detail-section-title">知识边界</div>
                         <div class="detail-section-content">知识截止: ${escapeHtml(p.knowledge_boundary?.knowledge_cutoff || '暂无')}
-可以讨论: ${(p.knowledge_boundary?.can_discuss || []).join('、')}
-不能讨论: ${(p.knowledge_boundary?.cannot_discuss || []).join('、')}</div>
+可以讨论: ${(p.knowledge_boundary?.can_discuss || []).map(s => escapeHtml(s)).join('、')}
+不能讨论: ${(p.knowledge_boundary?.cannot_discuss || []).map(s => escapeHtml(s)).join('、')}</div>
                     </div>
                     <div class="detail-section">
                         <div class="detail-section-title">对话行为准则</div>

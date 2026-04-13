@@ -557,7 +557,7 @@
                         <div style="margin-top: 8px;">
                             <div class="label">常用表达</div>
                             <div style="color: #666; font-size: 0.85rem; margin-top: 4px;">
-                                ${(char.language_style?.catchphrases || []).join('、')}
+                                ${(char.language_style?.catchphrases || []).map(cp => escapeHtml(cp)).join('、')}
                             </div>
                         </div>
                     </div>
@@ -568,11 +568,11 @@
                         <div class="temporal-constraints">
                             <div class="constraint-box can">
                                 <div class="label">可以讨论</div>
-                                <div class="value" style="font-size: 0.8rem;">${(char.temporal_constraints.can_discuss || []).join('、')}</div>
+                                <div class="value" style="font-size: 0.8rem;">${(char.temporal_constraints.can_discuss || []).map(s => escapeHtml(s)).join('、')}</div>
                             </div>
                             <div class="constraint-box cannot">
                                 <div class="label">不能讨论</div>
-                                <div class="value" style="font-size: 0.8rem;">${(char.temporal_constraints.cannot_discuss || []).join('、')}</div>
+                                <div class="value" style="font-size: 0.8rem;">${(char.temporal_constraints.cannot_discuss || []).map(s => escapeHtml(s)).join('、')}</div>
                             </div>
                         </div>
                     </div>

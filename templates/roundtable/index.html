@@ -513,7 +513,11 @@
 {% block extra_js %}
 <script>
     const MIN_SELECT = 3;
-    const MAX_SELECT = 5;
+    const MAX_SELECT = 8;
+
+    // DEBUG: Track timing (set to false in production)
+    let startTime = null;
+    const isDebug = false;
 
     let selectedCharacters = [];
     let currentTopic = '';
@@ -573,6 +577,7 @@
                 body: JSON.stringify({ topic: currentTopic })
             });
 
+            if (!response.ok) throw new Error('服务器错误: ' + response.status);
             const data = await response.json();
 
             if (data.error) {
@@ -672,6 +677,7 @@
     async function loadHistory() {
         try {
             const response = await fetch('/roundtable/api/history/');
+            if (!response.ok) throw new Error('服务器错误: ' + response.status);
             const data = await response.json();
 
             if (!data.history || data.history.length === 0) {
@@ -712,6 +718,7 @@
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' }
             });
+            if (!response.ok) throw new Error('服务器错误: ' + response.status);
             const data = await response.json();
 
             if (data.error) {
@@ -729,9 +736,5 @@
 
     // Load history on page load
     loadHistory();
-
-    // DEBUG: Track timing
-    let startTime = null;
-    const isDebug = true; // Set to false in production
 </script>
 {% endblock %}
