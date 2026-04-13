@@ -16,6 +16,7 @@ from .exceptions import (
     LLMTimeoutError,
     LLMMaxRetriesExceededError,
 )
+from anthropic.types import TextBlock, ThinkingBlock
 
 logger = logging.getLogger(__name__)
 
@@ -167,10 +168,19 @@ class AnthropicBackend:
         params = {
             "model": model or self.provider.default_model,
             "messages": [{"role": "user", "content": prompt}],
+            "max_tokens": 4096,
             "thinking": {"type": "enabled"} if thinking else None,
         }
         if system_prompt:
             params["system"] = system_prompt
 
         response = self._client.messages.create(**params)
-        return response.content[0].text
+
+        # Handle response content, which may include ThinkingBlocks
+        text_parts = []
+        for block in response.content:
+            if isinstance(block, TextBlock):
+                text_parts.append(block.text)
+            # Ignore ThinkingBlocks as they're just internal reasoning
+
+        return "\n".join(text_parts) if text_parts else ""

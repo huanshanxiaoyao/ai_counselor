@@ -28,6 +28,14 @@ def get_llm_client(provider: str) -> LLMClient:
     return LLMClient(provider_name=provider)
 
 
+class HomeView(View):
+    """Home page view."""
+
+    def get(self, request):
+        """Render the home page."""
+        return render(request, 'home/index.html')
+
+
 class ChatView(View):
     """Main chat page view."""
 

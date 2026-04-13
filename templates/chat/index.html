@@ -1,6 +1,7 @@
 <!DOCTYPE html>
 <html lang="zh-CN">
 <head>
+    {% load static %}
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>AI Counselor - 群聊</title>
@@ -236,8 +237,13 @@
 </head>
 <body>
     <div class="header">
-        <h1>AI Counselor</h1>
-        <p>同时向 通义千问、DeepSeek、MiniMax 提问，获取多元视角的回答</p>
+        <div style="display: flex; justify-content: space-between; align-items: center; max-width: 1400px; margin: 0 auto;">
+            <div>
+                <h1>AI Counselor</h1>
+                <p>同时向 通义千问、DeepSeek、MiniMax 提问，获取多元视角的回答</p>
+            </div>
+            <a href="{% url 'home' %}" style="color: white; text-decoration: none; font-size: 14px;">← 返回首页</a>
+        </div>
     </div>
 
     <div class="chat-container">
@@ -341,7 +347,7 @@
             });
 
             try {
-                const response = await fetch('/api/chat/', {
+                const response = await fetch('/api/counselor/', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ prompt })

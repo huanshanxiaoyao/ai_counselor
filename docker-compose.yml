@@ -19,6 +19,9 @@ services:
     image: redis:7-alpine
     ports:
       - "${REDIS_PORT:-6379}:6379"
+    volumes:
+      - redis_data:/data
+    command: redis-server --appendonly yes
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
       interval: 5s
@@ -30,15 +33,19 @@ services:
       context: .
       dockerfile: Dockerfile
     volumes:
-      - ./backend:/app
+      - .:/app
     ports:
-      - "${APP_PORT:-8000}:8000"
+      - "${APP_PORT:-8002}:8002"
     env_file:
       - .env
     environment:
       - DEBUG=1
+      - PYTHONPATH=/app
       - DATABASE_URL=postgresql://postgres:postgres@postgres:5432/ai_counselor
-      - REDIS_URL=redis://redis:6379/0
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+    working_dir: /app/backend
+    command: daphne -b 0.0.0.0 -p 8002 backend.config.asgi:application
     depends_on:
       postgres:
         condition: service_healthy
@@ -48,3 +55,4 @@ services:
 
 volumes:
   postgres_data:
+  redis_data:
