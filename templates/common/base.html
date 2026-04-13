@@ -1,0 +1,33 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    {% load static %}
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% block title %}AI Tools{% endblock %}</title>
+    <link rel="stylesheet" href="{% static 'css/style.css' %}">
+    {% block extra_css %}{% endblock %}
+</head>
+<body>
+    <header class="header">
+        <div class="header-content">
+            <a href="{% url 'home' %}" class="logo">AI Tools</a>
+            <nav class="nav">
+                <a href="{% url 'home' %}" class="nav-link">首页</a>
+                <a href="{% url 'counselor' %}" class="nav-link">AI 心理顾问</a>
+                <a href="{% url 'roundtable:index' %}" class="nav-link">圆桌会谈</a>
+            </nav>
+        </div>
+    </header>
+
+    <main class="main-content">
+        {% block content %}{% endblock %}
+    </main>
+
+    <footer class="footer">
+        <p>Built with Django + Multiple AI Providers</p>
+    </footer>
+
+    {% block extra_js %}{% endblock %}
+</body>
+</html>

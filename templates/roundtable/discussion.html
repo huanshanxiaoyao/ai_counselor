@@ -1,0 +1,1402 @@
+{% extends 'common/base.html' %}
+{% load static %}
+
+{% block title %}讨论室 - 圆桌会谈{% endblock %}
+
+{% block extra_css %}
+<style>
+    .discussion-container {
+        max-width: 1200px;
+        margin: 0 auto;
+        height: calc(100vh - 80px);
+        display: flex;
+        flex-direction: column;
+    }
+
+    /* Header */
+    .discussion-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        padding: 16px 24px;
+        background: #ffffff;
+        border-radius: 12px;
+        box-shadow: 0 2px 8px rgba(0,0,0,0.06);
+        margin-bottom: 16px;
+    }
+
+    .header-left {
+        display: flex;
+        align-items: center;
+        gap: 16px;
+    }
+
+    .header-left h1 {
+        font-size: 1.3rem;
+        color: #1a1a2e;
+        margin: 0;
+    }
+
+    .topic-badge {
+        display: inline-block;
+        background: #fff3e0;
+        border: 1px solid #ffcc80;
+        color: #e65100;
+        padding: 6px 16px;
+        border-radius: 20px;
+        font-size: 0.9rem;
+    }
+
+    .status-badges {
+        display: flex;
+        gap: 12px;
+        align-items: center;
+    }
+
+    .status-badge {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        padding: 6px 12px;
+        background: #f5f5f5;
+        border-radius: 20px;
+        font-size: 0.8rem;
+        color: #666;
+    }
+
+    .status-badge .dot {
+        width: 8px;
+        height: 8px;
+        border-radius: 50%;
+        background: #4caf50;
+    }
+
+    .status-badge.active .dot {
+        background: #4caf50;
+        animation: pulse 2s infinite;
+    }
+
+    .status-badge.finished .dot {
+        background: #ff9800;
+    }
+
+    @keyframes pulse {
+        0%, 100% { opacity: 1; }
+        50% { opacity: 0.5; }
+    }
+
+    .btn-refresh {
+        padding: 8px 16px;
+        background: #f5f5f5;
+        border: 1px solid #ddd;
+        border-radius: 6px;
+        cursor: pointer;
+        font-size: 0.85rem;
+        transition: all 0.2s;
+    }
+
+    .btn-refresh:hover {
+        background: #eee;
+    }
+
+    .btn-export {
+        padding: 8px 16px;
+        background: linear-gradient(135deg, #667eea, #764ba2);
+        border: none;
+        border-radius: 6px;
+        cursor: pointer;
+        font-size: 0.85rem;
+        color: #fff;
+        transition: all 0.2s;
+    }
+
+    .btn-export:hover {
+        transform: translateY(-1px);
+        box-shadow: 0 3px 10px rgba(102, 126, 234, 0.4);
+    }
+
+    /* Main Area */
+    .main-area {
+        display: flex;
+        flex: 1;
+        gap: 16px;
+        overflow: hidden;
+    }
+
+    /* Messages Panel */
+    .messages-panel {
+        flex: 1;
+        background: #ffffff;
+        border-radius: 12px;
+        box-shadow: 0 2px 8px rgba(0,0,0,0.06);
+        display: flex;
+        flex-direction: column;
+        overflow: hidden;
+    }
+
+    .messages-header {
+        padding: 12px 20px;
+        border-bottom: 1px solid #eee;
+        font-size: 0.85rem;
+        color: #888;
+        text-align: center;
+    }
+
+    .messages-list {
+        flex: 1;
+        overflow-y: auto;
+        padding: 20px;
+        background: #fafafa;
+    }
+
+    .message-item {
+        margin-bottom: 20px;
+        animation: slideIn 0.3s ease;
+    }
+
+    @keyframes slideIn {
+        from { opacity: 0; transform: translateY(10px); }
+        to { opacity: 1; transform: translateY(0); }
+    }
+
+    .message-wrapper {
+        display: flex;
+        gap: 10px;
+        max-width: 85%;
+    }
+
+    .message-wrapper.user {
+        flex-direction: row-reverse;
+        margin-left: auto;
+    }
+
+    .message-wrapper.moderator {
+        max-width: 90%;
+    }
+
+    .message-avatar {
+        width: 40px;
+        height: 40px;
+        border-radius: 50%;
+        background: linear-gradient(135deg, #4caf50, #8bc34a);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 1rem;
+        font-weight: bold;
+        color: white;
+        flex-shrink: 0;
+    }
+
+    .message-avatar.moderator {
+        background: linear-gradient(135deg, #667eea, #764ba2);
+    }
+
+    .message-avatar.user {
+        background: linear-gradient(135deg, #00d9ff, #00ff88);
+    }
+
+    .message-bubble {
+        background: #ffffff;
+        border: 1px solid #e0e0e0;
+        border-radius: 12px;
+        padding: 12px 16px;
+        position: relative;
+    }
+
+    .message-wrapper.user .message-bubble {
+        background: linear-gradient(135deg, #00d9ff 0%, #00ff88 100%);
+        border: none;
+        color: #1a1a2e;
+    }
+
+    .message-wrapper.moderator .message-bubble {
+        background: #e8eaf6;
+        border-left: 3px solid #667eea;
+    }
+
+    .message-sender {
+        font-size: 0.75rem;
+        color: #888;
+        margin-bottom: 4px;
+        font-weight: 500;
+    }
+
+    .message-wrapper.user .message-sender {
+        color: #00838f;
+        text-align: right;
+    }
+
+    .message-content {
+        font-size: 0.95rem;
+        line-height: 1.7;
+        color: #333;
+        white-space: pre-wrap;
+    }
+
+    .message-wrapper.user .message-content {
+        color: #1a1a2e;
+    }
+
+    .message-time {
+        font-size: 0.7rem;
+        color: #aaa;
+        margin-top: 6px;
+        text-align: right;
+    }
+
+    /* Input Panel */
+    .input-panel {
+        padding: 16px 20px;
+        border-top: 1px solid #eee;
+        background: #fff;
+    }
+
+    .input-hint {
+        font-size: 0.8rem;
+        color: #888;
+        margin-bottom: 10px;
+        display: flex;
+        align-items: center;
+        gap: 8px;
+    }
+
+    .input-hint.active {
+        color: #4caf50;
+    }
+
+    .input-row {
+        display: flex;
+        gap: 12px;
+        align-items: flex-end;
+    }
+
+    .message-input {
+        flex: 1;
+        background: #f5f5f5;
+        border: 2px solid transparent;
+        border-radius: 12px;
+        padding: 14px 16px;
+        font-size: 0.95rem;
+        resize: none;
+        min-height: 56px;
+        font-family: inherit;
+        transition: all 0.2s;
+    }
+
+    .message-input:focus {
+        outline: none;
+        border-color: #00d9ff;
+        background: #fff;
+    }
+
+    .message-input::placeholder {
+        color: #aaa;
+    }
+
+    .message-input:disabled {
+        background: #f0f0f0;
+        color: #aaa;
+        cursor: not-allowed;
+    }
+
+    .btn-send {
+        padding: 14px 28px;
+        background: linear-gradient(135deg, #00d9ff 0%, #00ff88 100%);
+        color: #1a1a2e;
+        border: none;
+        border-radius: 12px;
+        font-size: 0.95rem;
+        font-weight: 600;
+        cursor: pointer;
+        transition: all 0.2s;
+        white-space: nowrap;
+    }
+
+    .btn-send:hover:not(:disabled) {
+        transform: translateY(-2px);
+        box-shadow: 0 6px 20px rgba(0, 217, 255, 0.3);
+    }
+
+    .btn-send:disabled {
+        opacity: 0.6;
+        cursor: not-allowed;
+        transform: none;
+    }
+
+    /* Sidebar */
+    .sidebar {
+        width: 280px;
+        background: #ffffff;
+        border-radius: 12px;
+        box-shadow: 0 2px 8px rgba(0,0,0,0.06);
+        display: flex;
+        flex-direction: column;
+        overflow: hidden;
+    }
+
+    .sidebar-header {
+        padding: 16px;
+        border-bottom: 1px solid #eee;
+        font-size: 0.9rem;
+        color: #666;
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+    }
+
+    .participant-list {
+        flex: 1;
+        overflow-y: auto;
+        padding: 12px;
+    }
+
+    .participant-card {
+        background: #f9f9f9;
+        border: 2px solid transparent;
+        border-radius: 10px;
+        padding: 12px;
+        margin-bottom: 10px;
+        cursor: pointer;
+        transition: all 0.2s;
+    }
+
+    .participant-card:hover {
+        background: #f0f0f0;
+    }
+
+    .participant-card.active {
+        border-color: #4caf50;
+        background: #e8f5e9;
+    }
+
+    .participant-card.speaking {
+        border-color: #00d9ff;
+        background: #e0f7fa;
+        animation: speakingPulse 1s infinite;
+    }
+
+    @keyframes speakingPulse {
+        0%, 100% { box-shadow: 0 0 0 0 rgba(0, 217, 255, 0.4); }
+        50% { box-shadow: 0 0 0 6px rgba(0, 217, 255, 0); }
+    }
+
+    .participant-header {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        margin-bottom: 8px;
+    }
+
+    .participant-avatar {
+        width: 36px;
+        height: 36px;
+        border-radius: 50%;
+        background: linear-gradient(135deg, #ff6b6b, #ffa500);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 0.9rem;
+        font-weight: bold;
+        color: white;
+    }
+
+    .participant-info h4 {
+        font-size: 0.95rem;
+        color: #1a1a2e;
+        margin: 0 0 2px 0;
+        font-weight: 600;
+    }
+
+    .participant-info .era {
+        font-size: 0.75rem;
+        color: #888;
+    }
+
+    .participant-stats {
+        font-size: 0.75rem;
+        color: #aaa;
+        display: flex;
+        justify-content: space-between;
+    }
+
+    .participant-bio {
+        font-size: 0.8rem;
+        color: #666;
+        line-height: 1.4;
+        margin-top: 8px;
+        display: none;
+    }
+
+    .participant-card.expanded .participant-bio {
+        display: block;
+    }
+
+    /* Role Section */
+    .role-section {
+        padding: 16px;
+        border-top: 1px solid #eee;
+        background: #fafafa;
+    }
+
+    .role-section label {
+        font-size: 0.8rem;
+        color: #888;
+        display: block;
+        margin-bottom: 8px;
+    }
+
+    .role-select {
+        width: 100%;
+        padding: 10px 12px;
+        background: #fff;
+        border: 1px solid #ddd;
+        border-radius: 8px;
+        font-size: 0.85rem;
+        color: #333;
+        cursor: pointer;
+    }
+
+    /* Loading Overlay */
+    .loading-overlay {
+        position: fixed;
+        top: 0;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        background: rgba(255, 255, 255, 0.95);
+        display: none;
+        align-items: center;
+        justify-content: center;
+        z-index: 1000;
+    }
+
+    .loading-overlay.active {
+        display: flex;
+    }
+
+    .loading-content {
+        text-align: center;
+    }
+
+    .loading-spinner {
+        width: 56px;
+        height: 56px;
+        border: 4px solid rgba(0, 217, 255, 0.2);
+        border-top-color: #00d9ff;
+        border-radius: 50%;
+        animation: spin 1s linear infinite;
+        margin: 0 auto 16px;
+    }
+
+    @keyframes spin {
+        to { transform: rotate(360deg); }
+    }
+
+    .loading-text {
+        font-size: 1rem;
+        color: #333;
+    }
+
+    .loading-subtext {
+        font-size: 0.85rem;
+        color: #888;
+        margin-top: 8px;
+    }
+
+    /* End Discussion Button */
+    .btn-end {
+        padding: 10px 16px;
+        background: #ffebee;
+        border: 1px solid #ffcdd2;
+        border-radius: 8px;
+        color: #c62828;
+        font-size: 0.8rem;
+        cursor: pointer;
+        transition: all 0.2s;
+    }
+
+    .btn-end:hover {
+        background: #ffcdd2;
+    }
+
+    /* @ Mention Autocomplete */
+    .mention-dropdown {
+        position: absolute;
+        bottom: 70px;
+        left: 20px;
+        background: white;
+        border: 1px solid #e0e0e0;
+        border-radius: 8px;
+        box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+        max-height: 200px;
+        overflow-y: auto;
+        z-index: 100;
+        display: none;
+        min-width: 200px;
+    }
+
+    .mention-dropdown.active {
+        display: block;
+    }
+
+    .mention-dropdown-header {
+        padding: 8px 12px;
+        font-size: 0.75rem;
+        color: #888;
+        border-bottom: 1px solid #eee;
+        background: #fafafa;
+    }
+
+    .mention-item {
+        padding: 10px 12px;
+        cursor: pointer;
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        transition: background 0.2s;
+    }
+
+    .mention-item:hover {
+        background: #f5f5f5;
+    }
+
+    .mention-item.selected {
+        background: #e3f2fd;
+    }
+
+    .mention-item .avatar {
+        width: 28px;
+        height: 28px;
+        border-radius: 50%;
+        background: linear-gradient(135deg, #ff6b6b, #ffa500);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 0.75rem;
+        font-weight: bold;
+        color: white;
+    }
+
+    .mention-item .info {
+        flex: 1;
+    }
+
+    .mention-item .info .name {
+        font-size: 0.9rem;
+        color: #333;
+        font-weight: 500;
+    }
+
+    .mention-item .info .era {
+        font-size: 0.75rem;
+        color: #888;
+    }
+
+    /* Empty State */
+    .empty-state {
+        text-align: center;
+        padding: 60px 20px;
+        color: #888;
+    }
+
+    .empty-state .icon {
+        font-size: 3rem;
+        margin-bottom: 16px;
+    }
+
+    /* Responsive */
+    @media (max-width: 900px) {
+        .main-area {
+            flex-direction: column;
+        }
+        .sidebar {
+            width: 100%;
+            max-height: 200px;
+        }
+        .participant-list {
+            display: flex;
+            gap: 10px;
+            overflow-x: auto;
+        }
+        .participant-card {
+            min-width: 180px;
+            margin-bottom: 0;
+        }
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="discussion-container">
+    <div class="discussion-header">
+        <div class="header-left">
+            <h1>🪑 圆桌会谈</h1>
+            <span class="topic-badge" id="topic-badge">话题：{{ topic }}</span>
+            {% if user_role == 'host' %}
+            <span style="background:#fff3e0;border:1px solid #ffcc80;color:#e65100;padding:6px 14px;border-radius:16px;font-size:0.85rem;">🎤 你扮演主持人</span>
+            {% elif user_role == 'observer' %}
+            <span style="background:#e3f2fd;border:1px solid #90caf9;color:#1565c0;padding:6px 14px;border-radius:16px;font-size:0.85rem;">👁️ 旁观者模式</span>
+            {% else %}
+            <span style="background:#e8f5e9;border:1px solid #a5d6a7;color:#2e7d32;padding:6px 14px;border-radius:16px;font-size:0.85rem;">🎭 参与者</span>
+            {% endif %}
+        </div>
+        <div class="status-badges">
+            <div class="status-badge active" id="status-badge">
+                <span class="dot"></span>
+                <span id="status-text">进行中</span>
+            </div>
+            <div class="status-badge">
+                <span>🔄</span>
+                <span>轮次：<strong id="current-round">{{ current_round }}</strong>/{{ max_rounds }}</span>
+            </div>
+            <button class="btn-export" id="btn-export" title="导出对话记录">📝 导出</button>
+            <button class="btn-refresh" onclick="location.reload()">🔄 刷新</button>
+        </div>
+    </div>
+
+    <div class="main-area">
+        <div class="messages-panel">
+            <div class="messages-header" id="messages-header">
+                {% if user_role == 'host' %}🎤 主持人模式 - 直接输入发言，@角色名让其回复{% elif user_role == 'observer' %}👁️ 旁观者模式 - 观看讨论{% else %}🎭 参与者模式 - 直接输入发言，@角色名让其回复{% endif %}
+            </div>
+            <div class="messages-list" id="messages-list">
+                <!-- Messages are loaded via WebSocket -->
+            </div>
+
+            <div class="input-panel" id="input-panel">
+                <div class="input-hint" id="input-hint">
+                    {% if user_role == 'host' %}🎤 输入发言内容，可用@角色名让角色回复{% elif user_role == 'observer' %}👁️ 旁观者模式 - 只能观看{% else %}🎭 输入发言内容，可用@角色名让角色回复{% endif %}
+                </div>
+                <div class="input-row" style="position: relative;">
+                    <textarea
+                        id="message-input"
+                        class="message-input"
+                        placeholder="{% if user_role == 'observer' %}旁观者模式，无法发言{% elif user_role == 'host' %}输入发言内容，@角色名让角色回复...{% else %}输入发言内容，@角色名让角色回复...{% endif %}"
+                        rows="1"
+                        maxlength="500"
+                        {% if user_role == 'observer' %}disabled{% endif %}
+                    ></textarea>
+                    {% if user_role != 'observer' %}
+                    <button id="btn-send" class="btn-send">发送</button>
+                    {% endif %}
+                </div>
+                <div class="mention-dropdown" id="mention-dropdown">
+                    <div class="mention-dropdown-header">选择要@的角色</div>
+                    <div class="mention-list" id="mention-list"></div>
+                </div>
+            </div>
+        </div>
+
+        <div class="sidebar">
+            <div class="sidebar-header">👥 参与者</div>
+            <div class="participant-list" id="participant-list">
+                <!-- 主持人（固定显示） -->
+                <div class="participant-card host-card" style="border-color:#667eea;background:#e8eaf6;">
+                    <div class="participant-header">
+                        <div class="participant-avatar" style="background:linear-gradient(135deg,#667eea,#764ba2);">主</div>
+                        <div class="participant-info">
+                            <h4>主持人 🎤</h4>
+                            <span class="era">AI 控场</span>
+                        </div>
+                    </div>
+                    <div class="participant-stats">
+                        <span>引导讨论流程</span>
+                    </div>
+                </div>
+
+                <!-- 玩家（固定显示） -->
+                <div class="participant-card player-card" style="border-color:#00d9ff;background:#e0f7fa;">
+                    <div class="participant-header">
+                        <div class="participant-avatar" style="background:linear-gradient(135deg,#00d9ff,#00ff88);">你</div>
+                        <div class="participant-info">
+                            <h4>玩家 🎭</h4>
+                            <span class="era">{% if user_role == 'host' %}主持人身份{% elif user_role == 'observer' %}旁观者{% else %}参与者{% endif %}</span>
+                        </div>
+                    </div>
+                    <div class="participant-stats">
+                        <span id="player-stats">发言 0 次</span>
+                    </div>
+                </div>
+
+                <!-- 其他角色 -->
+                {% for char in characters %}
+                <div class="participant-card" data-char-id="{{ char.id }}" data-char-name="{{ char.name }}">
+                    <div class="participant-header">
+                        <div class="participant-avatar">{{ char.name|slice:":1" }}</div>
+                        <div class="participant-info">
+                            <h4>{{ char.name }}</h4>
+                            <span class="era">{{ char.era }}</span>
+                        </div>
+                    </div>
+                    <div class="participant-stats">
+                        <span>发言 {{ char.message_count }} 次</span>
+                    </div>
+                    <div class="participant-bio">{{ char.bio|default:"暂无简介" }}</div>
+                </div>
+                {% endfor %}
+            </div>
+
+            <div class="role-section">
+                <label>切换身份</label>
+                <select id="user-role" class="role-select">
+                    <option value="host" {% if user_role == 'host' %}selected{% endif %}>🎤 主持人</option>
+                    <option value="participant" {% if user_role == 'participant' %}selected{% endif %}>🎭 参与者</option>
+                    <option value="observer" {% if user_role == 'observer' %}selected{% endif %}>👁️ 旁观者</option>
+                </select>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="loading-overlay" id="loading-overlay">
+    <div class="loading-content">
+        <div class="loading-spinner"></div>
+        <div class="loading-text" id="loading-text">AI 正在思考...</div>
+        <div class="loading-subtext" id="loading-subtext">请稍候</div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    const discussionId = {{ discussion_id }};
+    const maxRounds = {{ max_rounds }};
+    const topic = "{{ topic|escapejs }}";
+
+    let selectedCharId = null;
+    let selectedCharName = null;
+    let userRole = '{{ user_role }}';
+    let isLoading = false;
+    let ws = null;
+
+    const messagesList = document.getElementById('messages-list');
+    const messagesHeader = document.getElementById('messages-header');
+    const messageInput = document.getElementById('message-input');
+    const btnSend = document.getElementById('btn-send');
+    const inputHint = document.getElementById('input-hint');
+    const currentRoundEl = document.getElementById('current-round');
+    const statusBadge = document.getElementById('status-badge');
+    const statusText = document.getElementById('status-text');
+    const loadingOverlay = document.getElementById('loading-overlay');
+    const loadingText = document.getElementById('loading-text');
+    const loadingSubtext = document.getElementById('loading-subtext');
+    const participantList = document.getElementById('participant-list');
+    const userRoleSelect = document.getElementById('user-role');
+    const mentionDropdown = document.getElementById('mention-dropdown');
+    const mentionList = document.getElementById('mention-list');
+
+    // Characters for @ mention（包括主持人和玩家）
+    let characters = [
+        {name: "主持人", era: "AI", is_host: true},
+        {name: "玩家", era: "你", is_player: true},
+        {% for char in characters %}{name: "{{ char.name|escapejs }}", era: "{{ char.era|escapejs }}"},{% endfor %}
+    ];
+
+    // Mention state
+    let mentionStartIndex = -1;
+    let selectedMentionIndex = -1;
+
+    // Token state
+    let hostTokenHolder = '主持人';
+    let playerTokenHolder = '玩家';
+    let currentRound = 0;
+    let currentSpeaker = '';
+
+    // Connect WebSocket
+    function connectWebSocket() {
+        const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+        const wsUrl = `${protocol}//${window.location.host}/ws/roundtable/d/${discussionId}/`;
+
+        ws = new WebSocket(wsUrl);
+
+        ws.onopen = () => {
+            console.log('WebSocket connected');
+        };
+
+        ws.onclose = () => {
+            console.log('WebSocket disconnected');
+            setTimeout(connectWebSocket, 3000);
+        };
+
+        ws.onerror = (error) => {
+            console.error('WebSocket error:', error);
+        };
+
+        ws.onmessage = (event) => {
+            const data = JSON.parse(event.data);
+            handleWebSocketMessage(data);
+        };
+    }
+
+    function handleWebSocketMessage(data) {
+        if (data.type === 'initial_state' || data.type === 'poll_response') {
+            const state = data.data;
+            messagesList.innerHTML = '';
+            if (state.messages) {
+                state.messages.forEach(msg => addMessageToList(msg));
+            }
+            if (state.characters) {
+                updateParticipants(state.characters);
+            }
+            if (state.status) {
+                statusText.textContent = state.status === 'active' ? '进行中' : '已结束';
+                statusBadge.className = 'status-badge ' + (state.status === 'active' ? 'active' : 'finished');
+            }
+            if (state.current_round) currentRoundEl.textContent = state.current_round;
+            scrollToBottom();
+
+        } else if (data.type === 'message') {
+            addMessageToList(data.data);
+            scrollToBottom();
+            if (!data.data.is_moderator && !data.data.is_user) {
+                updateParticipantStats(data.data.speaker);
+            }
+
+        } else if (data.type === 'state_update') {
+            const state = data.data;
+            if (state.status) {
+                statusText.textContent = state.status === 'active' ? '进行中' : '已结束';
+                statusBadge.className = 'status-badge ' + (state.status === 'active' ? 'active' : 'finished');
+            }
+            if (state.current_round) currentRoundEl.textContent = state.current_round;
+            if (state.host_token_holder) {
+                console.log('[令牌] 主持人令牌持有者:', state.host_token_holder);
+            }
+            if (state.player_token_holder) {
+                console.log('[令牌] 玩家令牌持有者:', state.player_token_holder);
+            }
+
+        } else if (data.type === 'debug_info') {
+            // 调试信息
+            console.log('[调试]', data.data.message);
+            // 可选：在界面上显示调试信息
+            showDebugInfo(data.data.message);
+
+        } else if (data.type === 'read_but_no_reply') {
+            // 已读未回通知
+            showNotification(`${data.data.character_name} 已读未回: ${data.data.decline_message}`, 'warning');
+
+        } else if (data.type === 'player_waiting') {
+            // 玩家等待提示
+            showNotification(data.data.message, 'info');
+            // 禁用输入
+            messageInput.disabled = true;
+            btnSend.disabled = true;
+            // 等待一段时间后恢复
+            setTimeout(() => {
+                messageInput.disabled = false;
+                btnSend.disabled = false;
+            }, 3000);
+
+        } else if (data.type === 'phase_change') {
+            // 阶段切换
+            console.log('[阶段]', `当前阶段: ${data.data.phase}, 轮次: ${data.data.round}`);
+            showNotification(`进入${data.data.phase === 'init' ? '初始化' : 'LLM决策'}阶段`, 'info');
+
+        } else if (data.type === 'discussion_end') {
+            // 讨论结束
+            statusText.textContent = '已结束';
+            statusBadge.className = 'status-badge finished';
+            messageInput.disabled = true;
+            btnSend.disabled = true;
+            if (data.data.closing) {
+                addMessageToList({
+                    speaker: '主持人',
+                    content: data.data.closing,
+                    is_moderator: true,
+                    is_user: false,
+                });
+                scrollToBottom();
+            }
+            showNotification('讨论已结束', 'warning');
+
+        } else if (data.type === 'token_update') {
+            // 令牌状态更新
+            console.log('[令牌更新]', data.data);
+            // 更新全局状态变量
+            if (data.data.host_token_holder !== undefined) {
+                hostTokenHolder = data.data.host_token_holder;
+            }
+            if (data.data.player_token_holder !== undefined) {
+                playerTokenHolder = data.data.player_token_holder;
+            }
+            if (data.data.current_round !== undefined) {
+                currentRound = data.data.current_round;
+            }
+            if (data.data.current_speaker !== undefined) {
+                currentSpeaker = data.data.current_speaker;
+            }
+            // 显示令牌状态
+            updateTokenDisplay();
+            // 在调试区显示
+            showDebugInfo(`[令牌] host=${hostTokenHolder}, player=${playerTokenHolder}, round=${currentRound}`);
+
+        } else if (data.type === 'user_typing') {
+            inputHint.textContent = `🎭 ${data.character_name} 正在发言...`;
+            inputHint.className = 'input-hint active';
+            highlightSpeakingCharacter(data.character_name);
+
+        } else if (data.type === 'user_typing_end') {
+            inputHint.textContent = selectedCharId ? `正在以【${selectedCharName}】身份发言` : '💡 选择左侧角色卡片，以该角色身份发言';
+            inputHint.className = selectedCharId ? 'input-hint active' : 'input-hint';
+            clearSpeakingHighlight();
+        }
+
+        hideLoading();
+    }
+
+    // 调试信息显示函数
+    function showDebugInfo(message) {
+        // 在消息列表末尾显示调试信息（保持时间顺序）
+        const debugEl = document.createElement('div');
+        debugEl.className = 'debug-info';
+        debugEl.style.cssText = 'background:#f5f5f5;border-left:3px solid #ff9800;padding:8px 12px;margin-bottom:10px;font-size:0.8rem;color:#666;font-family:monospace;';
+        debugEl.textContent = `[调试] ${message}`;
+        messagesList.appendChild(debugEl);
+        scrollToBottom();
+    }
+
+    // 令牌状态显示函数
+    function updateTokenDisplay() {
+        console.log(`[令牌状态] host=${hostTokenHolder}, player=${playerTokenHolder}, round=${currentRound}, speaker=${currentSpeaker}`);
+        // 可以在这里更新页面上的令牌状态显示
+        // 例如：document.getElementById('host-token-holder').textContent = hostTokenHolder;
+    }
+
+    // 通知显示函数
+    function showNotification(message, type = 'info') {
+        const colors = {
+            'info': '#e3f2fd;border-left-color:#2196f3',
+            'warning': '#fff3e0;border-left-color:#ff9800',
+            'error': '#ffebee;border-left-color:#f44336'
+        };
+        const notifEl = document.createElement('div');
+        notifEl.className = 'notification';
+        notifEl.style.cssText = `background:#fff;${colors[type] || colors.info};border-left:3px solid;padding:10px 14px;margin-bottom:10px;border-radius:4px;font-size:0.85rem;animation:slideIn 0.3s ease;`;
+        notifEl.textContent = message;
+        messagesList.appendChild(notifEl);
+        scrollToBottom();
+        // 3秒后移除
+        setTimeout(() => {
+            notifEl.style.opacity = '0';
+            setTimeout(() => notifEl.remove(), 300);
+        }, 3000);
+    }
+
+    // Select participant
+    participantList.addEventListener('click', (e) => {
+        const card = e.target.closest('.participant-card');
+        if (!card || isLoading) return;
+
+        const charId = card.dataset.charId;
+        const charName = card.dataset.charName;
+
+        if (selectedCharId === charId) {
+            // Deselect
+            card.classList.remove('active');
+            selectedCharId = null;
+            selectedCharName = null;
+            inputHint.textContent = '💡 选择左侧角色卡片，以该角色身份发言';
+            inputHint.className = 'input-hint';
+        } else {
+            // Select
+            document.querySelectorAll('.participant-card').forEach(c => c.classList.remove('active'));
+            card.classList.add('active');
+            selectedCharId = charId;
+            selectedCharName = charName;
+            inputHint.textContent = `🎭 正在以【${charName}】身份发言`;
+            inputHint.className = 'input-hint active';
+        }
+    });
+
+    // Double click to expand bio
+    participantList.addEventListener('dblclick', (e) => {
+        const card = e.target.closest('.participant-card');
+        if (card) {
+            card.classList.toggle('expanded');
+        }
+    });
+
+    // User role change
+    userRoleSelect.addEventListener('change', () => {
+        userRole = userRoleSelect.value;
+        updateUIForRole();
+    });
+
+    // Send message via WebSocket
+    btnSend.addEventListener('click', sendMessage);
+    messageInput.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter' && !e.shiftKey) {
+            e.preventDefault();
+            if (mentionDropdown.classList.contains('active')) {
+                selectMentionItem(selectedMentionIndex);
+            } else {
+                sendMessage();
+            }
+        } else if (e.key === 'ArrowDown' && mentionDropdown.classList.contains('active')) {
+            e.preventDefault();
+            navigateMention(1);
+        } else if (e.key === 'ArrowUp' && mentionDropdown.classList.contains('active')) {
+            e.preventDefault();
+            navigateMention(-1);
+        } else if (e.key === 'Escape' && mentionDropdown.classList.contains('active')) {
+            hideMentionDropdown();
+        }
+    });
+
+    // Handle @ mention detection
+    messageInput.addEventListener('input', (e) => {
+        const value = messageInput.value;
+        const cursorPos = messageInput.selectionStart;
+
+        // Find @ before cursor
+        const textBeforeCursor = value.substring(0, cursorPos);
+        const lastAtIndex = textBeforeCursor.lastIndexOf('@');
+
+        if (lastAtIndex !== -1) {
+            const textAfterAt = textBeforeCursor.substring(lastAtIndex + 1);
+            // If no space after @, show dropdown
+            if (!textAfterAt.includes(' ') && lastAtIndex === cursorPos - 1 || !textAfterAt.includes(' ')) {
+                mentionStartIndex = lastAtIndex;
+                showMentionDropdown(textAfterAt);
+                return;
+            }
+            // Check if @ is followed by text (for filtering)
+            if (!textAfterAt.includes(' ')) {
+                mentionStartIndex = lastAtIndex;
+                showMentionDropdown(textAfterAt);
+                return;
+            }
+        }
+
+        hideMentionDropdown();
+    });
+
+    // Click outside to close dropdown
+    document.addEventListener('click', (e) => {
+        if (!e.target.closest('.mention-dropdown') && e.target !== messageInput) {
+            hideMentionDropdown();
+        }
+    });
+
+    // Mention functions
+    function showMentionDropdown(filter) {
+        const filtered = characters.filter(c =>
+            c.name.toLowerCase().includes(filter.toLowerCase())
+        );
+
+        if (filtered.length === 0) {
+            hideMentionDropdown();
+            return;
+        }
+
+        mentionList.innerHTML = filtered.map((c, i) => {
+            const avatarStyle = c.is_host
+                ? 'background:linear-gradient(135deg,#667eea,#764ba2)'
+                : c.is_player
+                ? 'background:linear-gradient(135deg,#00d9ff,#00ff88)'
+                : '';
+            const tag = c.is_host ? ' 🎤' : c.is_player ? ' 🎭' : '';
+            return `
+            <div class="mention-item" data-index="${i}" data-name="${c.name}">
+                <div class="avatar" style="${avatarStyle}">${c.name.charAt(0)}</div>
+                <div class="info">
+                    <div class="name">${escapeHtml(c.name)}${tag}</div>
+                    <div class="era">${c.is_host ? '输入 /quit 结束对话' : escapeHtml(c.era)}</div>
+                </div>
+            </div>
+        `}).join('');
+
+        // Add click handlers
+        mentionList.querySelectorAll('.mention-item').forEach(item => {
+            item.addEventListener('click', () => {
+                const idx = parseInt(item.dataset.index);
+                selectMentionItem(idx);
+            });
+        });
+
+        selectedMentionIndex = 0;
+        updateMentionSelection();
+        mentionDropdown.classList.add('active');
+    }
+
+    function hideMentionDropdown() {
+        mentionDropdown.classList.remove('active');
+        mentionStartIndex = -1;
+        selectedMentionIndex = -1;
+    }
+
+    function navigateMention(direction) {
+        const items = mentionList.querySelectorAll('.mention-item');
+        if (items.length === 0) return;
+
+        selectedMentionIndex = (selectedMentionIndex + direction + items.length) % items.length;
+        updateMentionSelection();
+    }
+
+    function updateMentionSelection() {
+        mentionList.querySelectorAll('.mention-item').forEach((item, i) => {
+            item.classList.toggle('selected', i === selectedMentionIndex);
+        });
+    }
+
+    function selectMentionItem(idx) {
+        const items = mentionList.querySelectorAll('.mention-item');
+        if (idx < 0 || idx >= items.length) return;
+
+        const name = items[idx].dataset.name;
+        const value = messageInput.value;
+        const beforeMention = value.substring(0, mentionStartIndex);
+        const afterMentionStart = mentionStartIndex + 1;
+        const afterMentionText = value.substring(afterMentionStart);
+
+        // Find the end of the mention (space or end of text)
+        const spaceIndex = afterMentionText.indexOf(' ');
+        const endIndex = spaceIndex === -1 ? value.length : mentionStartIndex + 1 + spaceIndex;
+
+        // Replace @name with @name
+        const newValue = beforeMention + '@' + name + ' ' + value.substring(endIndex);
+        messageInput.value = newValue;
+
+        hideMentionDropdown();
+        messageInput.focus();
+
+        // Set cursor position after the inserted mention
+        const newCursorPos = mentionStartIndex + name.length + 2;
+        messageInput.setSelectionRange(newCursorPos, newCursorPos);
+    }
+
+    function updateUIForRole() {
+        // Update input hint
+        if (userRole === 'host') {
+            inputHint.textContent = '🎤 输入发言内容，可用@角色名让角色回复';
+            inputHint.className = 'input-hint';
+            messageInput.placeholder = '输入发言内容，@角色名让角色回复...';
+            messageInput.disabled = false;
+            btnSend.style.display = 'block';
+            btnSend.textContent = '发送';
+        } else if (userRole === 'observer') {
+            inputHint.textContent = '👁️ 旁观者模式 - 只能观看';
+            inputHint.className = 'input-hint';
+            messageInput.placeholder = '旁观者模式，无法发言';
+            messageInput.disabled = true;
+            btnSend.style.display = 'none';
+        } else {
+            inputHint.textContent = '🎭 输入发言内容，可用@角色名让角色回复';
+            inputHint.className = 'input-hint';
+            messageInput.placeholder = '输入发言内容，@角色名让角色回复...';
+            messageInput.disabled = false;
+            btnSend.style.display = 'block';
+            btnSend.textContent = '发送';
+        }
+    }
+
+    function sendMessage() {
+        const content = messageInput.value.trim();
+        if (!content || isLoading) return;
+
+        // Host/Participant mode: send message directly, backend handles @ mentions
+        if (userRole === 'host' || userRole === 'participant') {
+            showLoading('正在发送...', 'AI 正在思考中');
+            ws.send(JSON.stringify({
+                type: 'user_message',
+                content: content
+            }));
+        }
+
+        messageInput.value = '';
+    }
+
+    function addMessageToList(msg) {
+        const isMod = msg.is_moderator;
+        const isUser = msg.is_user || msg.speaker === '你';
+
+        const wrapper = document.createElement('div');
+        wrapper.className = 'message-wrapper chat-message' + (isMod ? ' moderator' : isUser ? ' user' : '');
+
+        const avatarClass = isMod ? 'moderator' : isUser ? 'user' : '';
+        const speakerName = isUser ? '你' : (msg.speaker || '未知');
+
+        wrapper.innerHTML = `
+            <div class="message-avatar ${avatarClass}">
+                ${(speakerName).charAt(0)}
+            </div>
+            <div class="message-bubble">
+                <div class="message-sender">${escapeHtml(speakerName)}</div>
+                <div class="message-content">${escapeHtml(msg.content)}</div>
+            </div>
+        `;
+
+        messagesList.appendChild(wrapper);
+    }
+
+    function updateParticipantStats(speaker) {
+        const cards = document.querySelectorAll('.participant-card');
+        cards.forEach(card => {
+            if (card.querySelector('.participant-info h4').textContent === speaker) {
+                const statsEl = card.querySelector('.participant-stats span');
+                const match = statsEl.textContent.match(/(\d+)/);
+                if (match) {
+                    const count = parseInt(match[1]) + 1;
+                    statsEl.textContent = `发言 ${count} 次`;
+                }
+            }
+        });
+    }
+
+    function updateParticipants(chars) {
+        // 获取固定的主持人和玩家卡片
+        const hostCard = participantList.querySelector('.host-card');
+        const playerCard = participantList.querySelector('.player-card');
+
+        // 清空列表
+        participantList.innerHTML = '';
+
+        // 重新添加主持人卡片
+        if (hostCard) {
+            participantList.appendChild(hostCard);
+        } else {
+            const hostCardHtml = `
+                <div class="participant-card host-card" style="border-color:#667eea;background:#e8eaf6;">
+                    <div class="participant-header">
+                        <div class="participant-avatar" style="background:linear-gradient(135deg,#667eea,#764ba2);">主</div>
+                        <div class="participant-info">
+                            <h4>主持人 🎤</h4>
+                            <span class="era">AI 控场</span>
+                        </div>
+                    </div>
+                    <div class="participant-stats">
+                        <span>引导讨论流程</span>
+                    </div>
+                </div>`;
+            participantList.insertAdjacentHTML('afterbegin', hostCardHtml);
+        }
+
+        // 重新添加玩家卡片
+        if (playerCard) {
+            participantList.appendChild(playerCard);
+        } else {
+            const playerCardHtml = `
+                <div class="participant-card player-card" style="border-color:#00d9ff;background:#e0f7fa;">
+                    <div class="participant-header">
+                        <div class="participant-avatar" style="background:linear-gradient(135deg,#00d9ff,#00ff88);">你</div>
+                        <div class="participant-info">
+                            <h4>玩家 🎭</h4>
+                            <span class="era">参与者</span>
+                        </div>
+                    </div>
+                    <div class="participant-stats">
+                        <span id="player-stats">发言 0 次</span>
+                    </div>
+                </div>`;
+            participantList.insertAdjacentHTML('beforeend', playerCardHtml);
+        }
+
+        // 添加角色卡片
+        chars.forEach(char => {
+            const cardHtml = `
+                <div class="participant-card" data-char-id="${char.id}" data-char-name="${escapeHtml(char.name)}">
+                    <div class="participant-header">
+                        <div class="participant-avatar">${char.name.charAt(0)}</div>
+                        <div class="participant-info">
+                            <h4>${escapeHtml(char.name)}</h4>
+                            <span class="era">${escapeHtml(char.era || '')}</span>
+                        </div>
+                    </div>
+                    <div class="participant-stats">
+                        <span>发言 ${char.message_count || 0} 次</span>
+                    </div>
+                    <div class="participant-bio">${escapeHtml(char.bio || '暂无简介')}</div>
+                </div>`;
+            participantList.insertAdjacentHTML('beforeend', cardHtml);
+        });
+    }
+
+    function highlightSpeakingCharacter(name) {
+        document.querySelectorAll('.participant-card').forEach(card => {
+            if (card.dataset.charName === name) {
+                card.classList.add('speaking');
+            }
+        });
+    }
+
+    function clearSpeakingHighlight() {
+        document.querySelectorAll('.participant-card').forEach(card => {
+            card.classList.remove('speaking');
+        });
+    }
+
+    function showLoading(text, subtext) {
+        isLoading = true;
+        btnSend.disabled = true;
+        messageInput.disabled = true;
+        loadingText.textContent = text;
+        loadingSubtext.textContent = subtext;
+        loadingOverlay.classList.add('active');
+    }
+
+    function hideLoading() {
+        isLoading = false;
+        btnSend.disabled = false;
+        messageInput.disabled = false;
+        loadingOverlay.classList.remove('active');
+        messageInput.focus();
+    }
+
+    function scrollToBottom() {
+        messagesList.scrollTop = messagesList.scrollHeight;
+    }
+
+    function escapeHtml(text) {
+        if (!text) return '';
+        const div = document.createElement('div');
+        div.textContent = String(text);
+        return div.innerHTML;
+    }
+
+    // 导出对话记录功能
+    function exportChatLog() {
+        const chatMessages = messagesList.querySelectorAll('.chat-message');
+        if (chatMessages.length === 0) {
+            showNotification('暂无对话记录', 'warning');
+            return;
+        }
+
+        let logContent = `圆桌会谈对话记录\n`;
+        logContent += `话题：${topic}\n`;
+        logContent += `导出时间：${new Date().toLocaleString('zh-CN')}\n`;
+        logContent += `================================\n\n`;
+
+        chatMessages.forEach(msg => {
+            const sender = msg.querySelector('.message-sender')?.textContent || '未知';
+            const content = msg.querySelector('.message-content')?.textContent || '';
+            logContent += `${sender}：${content}\n\n`;
+        });
+
+        // 生成文件下载
+        const blob = new Blob([logContent], { type: 'text/plain;charset=utf-8' });
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement('a');
+        const dateStr = new Date().toISOString().slice(0, 10);
+        link.href = url;
+        link.download = `圆桌会谈-${topic.slice(0, 20)}-${dateStr}.txt`;
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        URL.revokeObjectURL(url);
+        showNotification('对话记录已导出', 'info');
+    }
+
+    // 绑定导出按钮事件
+    document.getElementById('btn-export').addEventListener('click', exportChatLog);
+
+    // Initial scroll to bottom
+    scrollToBottom();
+
+    // Initial UI update based on user role
+    updateUIForRole();
+
+    // Connect WebSocket
+    connectWebSocket();
+</script>
+{% endblock %}

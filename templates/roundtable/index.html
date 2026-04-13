@@ -1,0 +1,737 @@
+{% extends 'common/base.html' %}
+{% load static %}
+
+{% block title %}圆桌会谈 - AI Tools{% endblock %}
+
+{% block extra_css %}
+<style>
+    .page-header {
+        text-align: center;
+        margin-bottom: 40px;
+    }
+
+    .page-header h1 {
+        font-size: 2rem;
+        margin-bottom: 12px;
+        background: linear-gradient(90deg, #ff6b6b, #ffa500);
+        -webkit-background-clip: text;
+        -webkit-text-fill-color: transparent;
+        background-clip: text;
+    }
+
+    .page-header p {
+        color: rgba(255, 255, 255, 0.7);
+        font-size: 1rem;
+    }
+
+    .setup-card {
+        max-width: 700px;
+        margin: 0 auto;
+        background: rgba(255, 255, 255, 0.05);
+        border: 1px solid rgba(255, 255, 255, 0.1);
+        border-radius: 16px;
+        padding: 40px;
+    }
+
+    .form-group {
+        margin-bottom: 24px;
+    }
+
+    .form-group label {
+        display: block;
+        font-size: 0.95rem;
+        color: rgba(255, 255, 255, 0.8);
+        margin-bottom: 8px;
+    }
+
+    .form-group input,
+    .form-group select {
+        width: 100%;
+        padding: 14px 16px;
+        background: rgba(0, 0, 0, 0.3);
+        border: 2px solid rgba(255, 255, 255, 0.1);
+        border-radius: 8px;
+        color: #fff;
+        font-size: 1rem;
+        transition: border-color 0.2s;
+    }
+
+    .form-group input:focus,
+    .form-group select:focus {
+        outline: none;
+        border-color: #ff6b6b;
+    }
+
+    .form-group input::placeholder {
+        color: rgba(255, 255, 255, 0.4);
+    }
+
+    .form-group select option {
+        background: #2a2a3e;
+        color: #fff;
+    }
+
+    .form-hint {
+        font-size: 0.8rem;
+        color: rgba(255, 255, 255, 0.5);
+        margin-top: 6px;
+    }
+
+    .form-hint.moderator-hint {
+        color: #ffa500;
+        font-weight: 500;
+    }
+
+    .btn-primary {
+        width: 100%;
+        padding: 16px;
+        background: linear-gradient(135deg, #ff6b6b 0%, #ffa500 100%);
+        color: white;
+        border: none;
+        border-radius: 8px;
+        font-size: 1rem;
+        font-weight: 600;
+        cursor: pointer;
+        transition: transform 0.2s, box-shadow 0.2s;
+    }
+
+    .btn-primary:hover:not(:disabled) {
+        transform: translateY(-2px);
+        box-shadow: 0 8px 25px rgba(255, 107, 107, 0.3);
+    }
+
+    .btn-primary:disabled {
+        opacity: 0.6;
+        cursor: not-allowed;
+    }
+
+    .characters-section {
+        margin-top: 50px;
+        display: none;
+    }
+
+    .characters-section.active {
+        display: block;
+    }
+
+    .section-title {
+        text-align: center;
+        font-size: 1.3rem;
+        margin-bottom: 24px;
+        color: #fff;
+    }
+
+    .characters-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+        gap: 16px;
+    }
+
+    .character-card {
+        background: rgba(60, 60, 80, 0.6);
+        border: 2px solid rgba(255, 255, 255, 0.25);
+        border-radius: 12px;
+        padding: 16px;
+        cursor: pointer;
+        transition: all 0.2s;
+    }
+
+    .character-card:hover {
+        border-color: rgba(255, 107, 107, 0.6);
+        background: rgba(80, 80, 100, 0.7);
+    }
+
+    .character-card.selected {
+        border-color: #ff6b6b;
+        background: rgba(80, 60, 70, 0.7);
+    }
+
+    .character-card .char-name {
+        font-size: 1.15rem;
+        font-weight: 700;
+        color: #ffffff;
+        margin-bottom: 6px;
+        text-shadow: 0 1px 2px rgba(0,0,0,0.3);
+    }
+
+    .character-card .char-era {
+        font-size: 0.9rem;
+        color: #ffcc80;
+        margin-bottom: 10px;
+        font-weight: 500;
+    }
+
+    .character-card .char-reason {
+        font-size: 0.9rem;
+        color: rgba(255, 255, 255, 0.95);
+        line-height: 1.6;
+    }
+
+    .character-card .char-checkbox {
+        position: absolute;
+        top: 12px;
+        right: 12px;
+        width: 24px;
+        height: 24px;
+        border: 2px solid rgba(255, 255, 255, 0.3);
+        border-radius: 50%;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 14px;
+        color: transparent;
+        transition: all 0.2s;
+    }
+
+    .character-card.selected .char-checkbox {
+        background: #ff6b6b;
+        border-color: #ff6b6b;
+        color: white;
+    }
+
+    .character-card {
+        position: relative;
+        padding-right: 44px;
+    }
+
+    .selection-info {
+        text-align: center;
+        margin: 24px 0;
+        color: rgba(255, 255, 255, 0.7);
+        font-size: 0.95rem;
+    }
+
+    .selection-info strong {
+        color: #ff6b6b;
+    }
+
+    .btn-start {
+        display: none;
+        width: 100%;
+        padding: 16px;
+        background: linear-gradient(135deg, #00d9ff 0%, #00ff88 100%);
+        color: #1a1a2e;
+        border: none;
+        border-radius: 8px;
+        font-size: 1rem;
+        font-weight: 600;
+        cursor: pointer;
+        transition: transform 0.2s, box-shadow 0.2s;
+    }
+
+    .btn-start.active {
+        display: block;
+    }
+
+    .btn-start:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 8px 25px rgba(0, 217, 255, 0.3);
+    }
+
+    .loading-indicator {
+        display: none;
+        text-align: center;
+        padding: 40px;
+    }
+
+    .loading-indicator.active {
+        display: block;
+    }
+
+    .spinner {
+        width: 48px;
+        height: 48px;
+        border: 4px solid rgba(255, 107, 107, 0.2);
+        border-top-color: #ff6b6b;
+        border-radius: 50%;
+        animation: spin 1s linear infinite;
+        margin: 0 auto 16px;
+    }
+
+    @keyframes spin {
+        to { transform: rotate(360deg); }
+    }
+
+    .error-message {
+        display: none;
+        background: rgba(231, 76, 60, 0.2);
+        border: 1px solid rgba(231, 76, 60, 0.4);
+        border-radius: 8px;
+        padding: 16px;
+        margin-bottom: 24px;
+        color: #e74c3c;
+    }
+
+    .error-message.active {
+        display: block;
+    }
+
+    /* History Section - Sidebar Layout */
+    .page-layout {
+        display: flex;
+        gap: 24px;
+        max-width: 1000px;
+        margin: 0 auto;
+        padding: 0 20px;
+    }
+
+    .history-sidebar {
+        width: 280px;
+        flex-shrink: 0;
+        background: rgba(30, 30, 50, 0.8);
+        border: 1px solid rgba(255, 255, 255, 0.15);
+        border-radius: 16px;
+        padding: 20px;
+        height: calc(100vh - 200px);
+        overflow-y: auto;
+    }
+
+    .sidebar-title {
+        font-size: 1rem;
+        color: #fff;
+        margin-bottom: 16px;
+        padding-bottom: 12px;
+        border-bottom: 1px solid rgba(255, 255, 255, 0.15);
+        display: flex;
+        align-items: center;
+        gap: 8px;
+    }
+
+    .sidebar-title::before {
+        content: '📜';
+    }
+
+    .history-empty {
+        text-align: center;
+        color: rgba(255, 255, 255, 0.5);
+        padding: 20px;
+        font-size: 0.85rem;
+    }
+
+    .history-list {
+        display: flex;
+        flex-direction: column;
+        gap: 10px;
+    }
+
+    .history-item {
+        background: rgba(255, 255, 255, 0.08);
+        border: 1px solid rgba(255, 255, 255, 0.12);
+        border-radius: 10px;
+        padding: 12px;
+        transition: all 0.2s;
+    }
+
+    .history-item:hover {
+        background: rgba(255, 255, 255, 0.15);
+        border-color: rgba(255, 255, 255, 0.25);
+    }
+
+    .history-topic {
+        font-size: 0.9rem;
+        color: #fff;
+        font-weight: 600;
+        margin-bottom: 6px;
+        line-height: 1.4;
+        display: -webkit-box;
+        -webkit-line-clamp: 2;
+        -webkit-box-orient: vertical;
+        overflow: hidden;
+    }
+
+    .history-meta {
+        font-size: 0.75rem;
+        color: rgba(255, 255, 255, 0.7);
+        display: flex;
+        flex-wrap: wrap;
+        gap: 6px;
+        align-items: center;
+        margin-bottom: 10px;
+    }
+
+    .history-status {
+        display: inline-block;
+        padding: 2px 6px;
+        border-radius: 8px;
+        font-size: 0.7rem;
+        font-weight: 500;
+    }
+
+    .history-status.active {
+        background: rgba(76, 175, 80, 0.3);
+        color: #81c784;
+    }
+
+    .history-status.finished {
+        background: rgba(255, 152, 0, 0.3);
+        color: #ffb74d;
+    }
+
+    .history-characters {
+        font-size: 0.75rem;
+        color: rgba(255, 255, 255, 0.65);
+        margin-bottom: 10px;
+        line-height: 1.3;
+    }
+
+    .history-actions {
+        display: flex;
+        gap: 6px;
+    }
+
+    .btn-view, .btn-restart {
+        padding: 6px 10px;
+        border: none;
+        border-radius: 5px;
+        font-size: 0.75rem;
+        cursor: pointer;
+        transition: all 0.2s;
+    }
+
+    .btn-view {
+        background: rgba(255, 255, 255, 0.12);
+        color: #fff;
+    }
+
+    .btn-view:hover {
+        background: rgba(255, 255, 255, 0.2);
+    }
+
+    .btn-restart {
+        background: linear-gradient(135deg, #00d9ff, #00ff88);
+        color: #1a1a2e;
+        font-weight: 600;
+    }
+
+    .btn-restart:hover {
+        transform: translateY(-1px);
+        box-shadow: 0 2px 8px rgba(0, 217, 255, 0.3);
+    }
+
+    .btn-restart:disabled {
+        opacity: 0.6;
+        cursor: not-allowed;
+        transform: none;
+    }
+
+    /* Main content area */
+    .main-content {
+        flex: 1;
+        min-width: 0;
+    }
+
+    .setup-card {
+        max-width: none;
+        margin: 0;
+    }
+
+    /* Responsive: collapse sidebar on small screens */
+    @media (max-width: 768px) {
+        .page-layout {
+            flex-direction: column;
+        }
+        .history-sidebar {
+            width: 100%;
+            height: auto;
+            max-height: 300px;
+            order: -1;
+            margin-bottom: 20px;
+        }
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <h1>圆桌会谈</h1>
+    <p>与历史人物展开跨越时空的对话</p>
+</div>
+
+<div class="page-layout">
+    <!-- History Sidebar -->
+    <div class="history-sidebar">
+        <div class="sidebar-title">历史会谈</div>
+        <div class="history-list" id="history-list">
+            <div class="history-empty">加载中...</div>
+        </div>
+    </div>
+
+    <!-- Main Content -->
+    <div class="main-content">
+        <div class="setup-card">
+            <div id="error-message" class="error-message"></div>
+
+            <form id="topic-form">
+        <div class="form-group">
+            <label for="topic-input">讨论话题</label>
+            <input
+                type="text"
+                id="topic-input"
+                placeholder="例如：项羽该不该渡江"
+                maxlength="200"
+                required
+            >
+            <div class="form-hint">输入你想讨论的话题，系统将为你推荐合适的嘉宾</div>
+        </div>
+
+        <div class="form-group">
+            <label for="user-role-select">你的角色</label>
+            <select id="user-role-select" class="form-group select">
+                <option value="participant" selected>🎭 参与者（与角色对话）</option>
+                <option value="host">🎤 主持人（控制发言节奏）</option>
+                <option value="observer">👁️ 旁观者（仅观看）</option>
+            </select>
+            <div class="form-hint" id="role-hint">选择「主持人」时，你需要手动邀请角色发言</div>
+        </div>
+
+        <button type="submit" id="btn-get-chars" class="btn-primary">
+            获取推荐嘉宾
+        </button>
+    </form>
+
+    <div id="loading-indicator" class="loading-indicator">
+        <div class="spinner"></div>
+        <p>正在分析话题，邀请嘉宾...</p>
+    </div>
+
+    <div id="characters-section" class="characters-section">
+        <h2 class="section-title">为你推荐以下嘉宾（选择 3-5 位）</h2>
+        <div id="characters-grid" class="characters-grid"></div>
+
+        <div class="selection-info">
+            已选择：<strong id="selected-count">0</strong> 位嘉宾
+        </div>
+
+        <button id="btn-start" class="btn-start" disabled>
+            开始讨论
+        </button>
+    </div>
+</div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    const MIN_SELECT = 3;
+    const MAX_SELECT = 5;
+
+    let selectedCharacters = [];
+    let currentTopic = '';
+
+    const topicForm = document.getElementById('topic-form');
+    const topicInput = document.getElementById('topic-input');
+    const userRoleSelect = document.getElementById('user-role-select');
+    const roleHint = document.getElementById('role-hint');
+    const btnGetChars = document.getElementById('btn-get-chars');
+    const loadingIndicator = document.getElementById('loading-indicator');
+    const charactersSection = document.getElementById('characters-section');
+    const charactersGrid = document.getElementById('characters-grid');
+    const selectedCount = document.getElementById('selected-count');
+    const btnStart = document.getElementById('btn-start');
+    const errorMessage = document.getElementById('error-message');
+
+    // Handle user role selection change
+    userRoleSelect.addEventListener('change', () => {
+        const role = userRoleSelect.value;
+        if (role === 'host') {
+            roleHint.textContent = '⚠️ 选择「主持人」时，你可以直接发言，也可以用@角色名让角色回复';
+            roleHint.classList.add('moderator-hint');
+        } else if (role === 'observer') {
+            roleHint.textContent = '👁️ 旁观者模式：只能观看，不能发言';
+            roleHint.classList.remove('moderator-hint');
+        } else {
+            roleHint.textContent = '🎭 选择「参与者」时，你可以直接发言，也可以用@角色名让角色回复';
+            roleHint.classList.remove('moderator-hint');
+        }
+    });
+
+    topicForm.addEventListener('submit', async (e) => {
+        e.preventDefault();
+        currentTopic = topicInput.value.trim();
+
+        if (!currentTopic) return;
+
+        // Reset state
+        errorMessage.classList.remove('active');
+        errorMessage.textContent = '';
+        selectedCharacters = [];
+        charactersGrid.innerHTML = '';
+        charactersSection.classList.remove('active');
+        btnStart.classList.remove('active');
+
+        // Start timing
+        if (isDebug) startTime = Date.now();
+
+        // Show loading
+        btnGetChars.disabled = true;
+        loadingIndicator.classList.add('active');
+
+        try {
+            const response = await fetch('/roundtable/api/suggestions/', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ topic: currentTopic })
+            });
+
+            const data = await response.json();
+
+            if (data.error) {
+                throw new Error(data.error);
+            }
+
+            // Display characters
+            displayCharacters(data.characters);
+
+            // DEBUG: Show timing
+            if (isDebug && startTime) {
+                const elapsed = ((Date.now() - startTime) / 1000).toFixed(2);
+                console.log(`[DEBUG] 获取嘉宾耗时: ${elapsed}秒`);
+                // Show timing in UI (hidden in production)
+                const timingInfo = document.createElement('div');
+                timingInfo.style.cssText = 'text-align:center;color:#888;font-size:12px;margin-top:8px;';
+                timingInfo.textContent = `获取嘉宾耗时: ${elapsed}秒`;
+                charactersSection.querySelector('.section-title').appendChild(timingInfo);
+            }
+        } catch (error) {
+            errorMessage.textContent = error.message || '获取嘉宾失败，请稍后再试';
+            errorMessage.classList.add('active');
+        } finally {
+            btnGetChars.disabled = false;
+            loadingIndicator.classList.remove('active');
+        }
+    });
+
+    function displayCharacters(characters) {
+        charactersGrid.innerHTML = characters.map((char, idx) => `
+            <div class="character-card" data-index="${idx}">
+                <div class="char-checkbox">✓</div>
+                <div class="char-name">${escapeHtml(char.name)}</div>
+                <div class="char-era">${escapeHtml(char.era)}</div>
+                <div class="char-reason">${escapeHtml(char.reason)}</div>
+            </div>
+        `).join('');
+
+        // Add click handlers
+        document.querySelectorAll('.character-card').forEach(card => {
+            card.addEventListener('click', () => toggleCharacter(card, characters[card.dataset.index]));
+        });
+
+        charactersSection.classList.add('active');
+    }
+
+    function toggleCharacter(card, character) {
+        const idx = selectedCharacters.findIndex(c => c.name === character.name);
+
+        if (idx >= 0) {
+            // Deselect
+            selectedCharacters.splice(idx, 1);
+            card.classList.remove('selected');
+        } else if (selectedCharacters.length < MAX_SELECT) {
+            // Select
+            selectedCharacters.push(character);
+            card.classList.add('selected');
+        }
+
+        updateSelectionUI();
+    }
+
+    function updateSelectionUI() {
+        const count = selectedCharacters.length;
+        selectedCount.textContent = count;
+
+        if (count >= MIN_SELECT && count <= MAX_SELECT) {
+            btnStart.classList.add('active');
+            btnStart.disabled = false;
+        } else {
+            btnStart.classList.remove('active');
+            btnStart.disabled = true;
+        }
+    }
+
+    btnStart.addEventListener('click', () => {
+        if (selectedCharacters.length < MIN_SELECT) return;
+        // Navigate to setup page with selected characters and user role
+        const params = new URLSearchParams({
+            topic: currentTopic,
+            characters: JSON.stringify(selectedCharacters),
+            user_role: userRoleSelect.value
+        });
+        window.location.href = '/roundtable/setup/?' + params.toString();
+    });
+
+    function escapeHtml(text) {
+        const div = document.createElement('div');
+        div.textContent = text;
+        return div.innerHTML;
+    }
+
+    // History Section
+    const historySection = document.getElementById('history-section');
+    const historyList = document.getElementById('history-list');
+
+    async function loadHistory() {
+        try {
+            const response = await fetch('/roundtable/api/history/');
+            const data = await response.json();
+
+            if (!data.history || data.history.length === 0) {
+                historyList.innerHTML = '<div class="history-empty">暂无历史会谈</div>';
+                return;
+            }
+
+            historyList.innerHTML = data.history.map(item => `
+                <div class="history-item" data-id="${item.id}">
+                    <div class="history-topic">${escapeHtml(item.topic)}</div>
+                    <div class="history-meta">
+                        <span class="history-status ${item.status}">${item.status === 'active' ? '进行中' : '已结束'}</span>
+                        <span>${item.current_round}/${item.max_rounds}轮</span>
+                        <span>${item.created_at}</span>
+                    </div>
+                    <div class="history-characters">${escapeHtml(item.character_names)}</div>
+                    <div class="history-actions">
+                        <button class="btn-view" onclick="viewDiscussion(${item.id})">查看</button>
+                        <button class="btn-restart" onclick="restartDiscussion(${item.id}, this)">重新开始</button>
+                    </div>
+                </div>
+            `).join('');
+        } catch (error) {
+            historyList.innerHTML = '<div class="history-empty">加载失败</div>';
+        }
+    }
+
+    function viewDiscussion(id) {
+        window.location.href = `/roundtable/d/${id}/`;
+    }
+
+    async function restartDiscussion(id, btn) {
+        btn.disabled = true;
+        btn.textContent = '创建中...';
+
+        try {
+            const response = await fetch(`/roundtable/api/restart/${id}/`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' }
+            });
+            const data = await response.json();
+
+            if (data.error) {
+                throw new Error(data.error);
+            }
+
+            // 跳转到新讨论
+            window.location.href = `/roundtable/d/${data.new_discussion_id}/`;
+        } catch (error) {
+            alert('重新开始失败: ' + error.message);
+            btn.disabled = false;
+            btn.textContent = '重新开始';
+        }
+    }
+
+    // Load history on page load
+    loadHistory();
+
+    // DEBUG: Track timing
+    let startTime = null;
+    const isDebug = true; // Set to false in production
+</script>
+{% endblock %}

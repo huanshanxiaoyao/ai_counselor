@@ -1,0 +1,646 @@
+{% extends 'common/base.html' %}
+{% load static %}
+
+{% block title %}角色配置 - 圆桌会谈{% endblock %}
+
+{% block extra_css %}
+<style>
+    .setup-container {
+        max-width: 900px;
+        margin: 0 auto;
+    }
+
+    .page-header {
+        text-align: center;
+        margin-bottom: 30px;
+    }
+
+    .page-header h1 {
+        font-size: 1.8rem;
+        margin-bottom: 8px;
+        color: #1a1a2e;
+    }
+
+    .topic-badge {
+        display: inline-block;
+        background: #fff3e0;
+        border: 1px solid #ffcc80;
+        color: #e65100;
+        padding: 8px 20px;
+        border-radius: 20px;
+        font-size: 0.95rem;
+    }
+
+    .btn-configure {
+        width: 100%;
+        padding: 16px;
+        background: linear-gradient(135deg, #ff6b6b 0%, #ffa500 100%);
+        color: white;
+        border: none;
+        border-radius: 8px;
+        font-size: 1rem;
+        font-weight: 600;
+        cursor: pointer;
+        transition: transform 0.2s, box-shadow 0.2s;
+        margin-bottom: 30px;
+    }
+
+    .btn-configure:hover:not(:disabled) {
+        transform: translateY(-2px);
+        box-shadow: 0 8px 25px rgba(255, 107, 107, 0.3);
+    }
+
+    .btn-configure:disabled {
+        opacity: 0.6;
+        cursor: not-allowed;
+    }
+
+    .loading-section {
+        display: none;
+        text-align: center;
+        padding: 60px 20px;
+    }
+
+    .loading-section.active {
+        display: block;
+    }
+
+    .loading-spinner {
+        width: 56px;
+        height: 56px;
+        border: 4px solid rgba(255, 107, 107, 0.2);
+        border-top-color: #ff6b6b;
+        border-radius: 50%;
+        animation: spin 1s linear infinite;
+        margin: 0 auto 20px;
+    }
+
+    .loading-text {
+        color: #333;
+        font-size: 1rem;
+    }
+
+    .loading-progress {
+        color: #666;
+        font-size: 0.85rem;
+        margin-top: 8px;
+    }
+
+    .timing-info {
+        color: #888;
+        font-size: 0.8rem;
+        margin-top: 4px;
+    }
+
+    @keyframes spin {
+        to { transform: rotate(360deg); }
+    }
+
+    .characters-section {
+        display: none;
+    }
+
+    .characters-section.active {
+        display: block;
+    }
+
+    .section-title {
+        font-size: 1.2rem;
+        color: #1a1a2e;
+        margin-bottom: 20px;
+        text-align: center;
+    }
+
+    .character-config-card {
+        background: #ffffff;
+        border: 2px solid #e0e0e0;
+        border-radius: 12px;
+        padding: 0;
+        margin-bottom: 16px;
+        overflow: hidden;
+    }
+
+    .character-config-card .char-header {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        padding: 16px 20px;
+        cursor: pointer;
+        background: #fafafa;
+        border-bottom: 1px solid #eee;
+        transition: background 0.2s;
+    }
+
+    .character-config-card .char-header:hover {
+        background: #f0f0f0;
+    }
+
+    .char-avatar {
+        width: 48px;
+        height: 48px;
+        border-radius: 50%;
+        background: linear-gradient(135deg, #4caf50, #8bc34a);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 1.2rem;
+        font-weight: bold;
+        color: white;
+        position: relative;
+    }
+
+    .char-avatar .checkmark {
+        position: absolute;
+        bottom: -2px;
+        right: -2px;
+        width: 18px;
+        height: 18px;
+        background: #4caf50;
+        border-radius: 50%;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 10px;
+        color: white;
+        border: 2px solid white;
+    }
+
+    .char-info {
+        flex: 1;
+    }
+
+    .char-info h3 {
+        font-size: 1.1rem;
+        color: #1a1a2e;
+        margin-bottom: 4px;
+    }
+
+    .char-info .era {
+        font-size: 0.85rem;
+        color: #666;
+    }
+
+    .expand-icon {
+        font-size: 1.2rem;
+        color: #999;
+        transition: transform 0.2s;
+    }
+
+    .character-config-card.expanded .expand-icon {
+        transform: rotate(180deg);
+    }
+
+    .config-details {
+        display: none;
+        padding: 20px;
+    }
+
+    .character-config-card.expanded .config-details {
+        display: block;
+    }
+
+    .config-item {
+        margin-bottom: 16px;
+    }
+
+    .config-item:last-child {
+        margin-bottom: 0;
+    }
+
+    .config-label {
+        font-size: 0.75rem;
+        color: #999;
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+        margin-bottom: 4px;
+    }
+
+    .config-value {
+        font-size: 0.95rem;
+        color: #333;
+        line-height: 1.6;
+    }
+
+    .viewpoints-list {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+    }
+
+    .viewpoint-tag {
+        background: #e3f2fd;
+        border: 1px solid #90caf9;
+        color: #1565c0;
+        padding: 4px 12px;
+        border-radius: 12px;
+        font-size: 0.8rem;
+    }
+
+    .language-style {
+        display: flex;
+        gap: 16px;
+        flex-wrap: wrap;
+    }
+
+    .style-item {
+        flex: 1;
+        min-width: 150px;
+        background: #f5f5f5;
+        padding: 10px 14px;
+        border-radius: 8px;
+    }
+
+    .style-item .label {
+        font-size: 0.75rem;
+        color: #666;
+        margin-bottom: 4px;
+    }
+
+    .style-item .value {
+        font-size: 0.9rem;
+        color: #333;
+    }
+
+    .articles-list {
+        display: flex;
+        flex-direction: column;
+        gap: 10px;
+    }
+
+    .article-item {
+        background: #f9f9f9;
+        padding: 12px;
+        border-radius: 8px;
+        border-left: 3px solid #ffa500;
+    }
+
+    .article-title {
+        font-size: 0.9rem;
+        color: #e65100;
+        margin-bottom: 4px;
+    }
+
+    .article-source {
+        font-size: 0.75rem;
+        color: #999;
+        margin-bottom: 6px;
+    }
+
+    .article-content {
+        font-size: 0.85rem;
+        color: #555;
+        line-height: 1.5;
+    }
+
+    .btn-start-discussion {
+        display: none;
+        width: 100%;
+        padding: 16px;
+        background: linear-gradient(135deg, #00d9ff 0%, #00ff88 100%);
+        color: #1a1a2e;
+        border: none;
+        border-radius: 8px;
+        font-size: 1rem;
+        font-weight: 600;
+        cursor: pointer;
+        transition: transform 0.2s, box-shadow 0.2s;
+        margin-top: 20px;
+    }
+
+    .btn-start-discussion.active {
+        display: block;
+    }
+
+    .btn-start-discussion:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 8px 25px rgba(0, 217, 255, 0.3);
+    }
+
+    .cache-badge {
+        display: inline-block;
+        padding: 2px 10px;
+        border-radius: 10px;
+        font-size: 0.75rem;
+        margin-left: 8px;
+        vertical-align: middle;
+    }
+
+    .cache-badge.hit {
+        background: #e8f5e9;
+        border: 1px solid #a5d6a7;
+        color: #2e7d32;
+    }
+
+    .cache-badge.miss {
+        background: #fff3e0;
+        border: 1px solid #ffcc80;
+        color: #e65100;
+    }
+
+    .cache-summary {
+        text-align: center;
+        margin-bottom: 16px;
+        padding: 12px;
+        background: #f5f5f5;
+        border-radius: 8px;
+        font-size: 0.9rem;
+        color: #333;
+    }
+
+    .cache-summary .hit-count {
+        color: #2e7d32;
+        font-weight: 600;
+    }
+
+    .cache-summary .miss-count {
+        color: #e65100;
+        font-weight: 600;
+    }
+
+    .error-message {
+        display: none;
+        background: #ffebee;
+        border: 1px solid #ef9a9a;
+        border-radius: 8px;
+        padding: 16px;
+        margin-bottom: 20px;
+        color: #c62828;
+        text-align: center;
+    }
+
+    .error-message.active {
+        display: block;
+    }
+
+    .temporal-constraints {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 12px;
+    }
+
+    .constraint-box {
+        background: #f5f5f5;
+        padding: 10px;
+        border-radius: 8px;
+    }
+
+    .constraint-box.can .label {
+        color: #2e7d32;
+    }
+
+    .constraint-box.cannot .label {
+        color: #c62828;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="setup-container">
+    <div class="page-header">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;">
+            <h1 style="margin:0;">角色配置</h1>
+            <button onclick="location.reload()" style="padding:8px 16px;background:#f5f5f5;border:1px solid #ddd;border-radius:6px;cursor:pointer;font-size:0.85rem;">🔄 刷新页面</button>
+        </div>
+        <div style="display:flex;gap:12px;flex-wrap:wrap;margin-bottom:8px;">
+            <div class="topic-badge">话题：{{ topic }}</div>
+            {% if user_role == 'host' %}
+            <div style="background:#fff3e0;border:1px solid #ffcc80;color:#e65100;padding:6px 14px;border-radius:16px;font-size:0.85rem;">🎤 你扮演主持人</div>
+            {% elif user_role == 'observer' %}
+            <div style="background:#e3f2fd;border:1px solid #90caf9;color:#1565c0;padding:6px 14px;border-radius:16px;font-size:0.85rem;">👁️ 旁观者模式</div>
+            {% else %}
+            <div style="background:#e8f5e9;border:1px solid #a5d6a7;color:#2e7d32;padding:6px 14px;border-radius:16px;font-size:0.85rem;">🎭 参与者</div>
+            {% endif %}
+        </div>
+    </div>
+
+    <div id="error-message" class="error-message"></div>
+
+    <button id="btn-configure" class="btn-configure">
+        开始配置角色
+    </button>
+
+    <div id="loading-section" class="loading-section">
+        <div class="loading-spinner"></div>
+        <div class="loading-text">正在为每位角色生成详细配置...</div>
+        <div class="loading-progress" id="loading-progress">准备中...</div>
+    </div>
+
+    <div id="characters-section" class="characters-section">
+        <h2 class="section-title">角色配置完成</h2>
+        <div id="timing-display" class="timing-info" style="text-align:center;margin-bottom:16px;"></div>
+        <div id="characters-list"></div>
+
+        <button id="btn-start" class="btn-start-discussion">
+            开始讨论
+        </button>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    const topic = "{{ topic|escapejs }}";
+    const characters = JSON.parse("{{ characters_json|escapejs }}");
+    const userRole = "{{ user_role }}";
+
+    const btnConfigure = document.getElementById('btn-configure');
+    const loadingSection = document.getElementById('loading-section');
+    const loadingProgress = document.getElementById('loading-progress');
+    const charactersSection = document.getElementById('characters-section');
+    const charactersList = document.getElementById('characters-list');
+    const btnStart = document.getElementById('btn-start');
+    const errorMessage = document.getElementById('error-message');
+    const timingDisplay = document.getElementById('timing-display');
+
+    let configuredCharacters = [];
+    let configureStartTime = null;
+
+    btnConfigure.addEventListener('click', async () => {
+        errorMessage.classList.remove('active');
+        btnConfigure.disabled = true;
+        loadingSection.classList.add('active');
+        charactersSection.classList.remove('active');
+        configureStartTime = Date.now();
+
+        try {
+            loadingProgress.textContent = `正在配置 ${characters.length} 个角色...`;
+
+            const response = await fetch('/roundtable/api/configure/', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ topic, characters })
+            });
+
+            const data = await response.json();
+
+            if (data.error) {
+                throw new Error(data.error);
+            }
+
+            const elapsed = ((Date.now() - configureStartTime) / 1000).toFixed(2);
+            timingDisplay.textContent = `配置耗时: ${elapsed}秒`;
+
+            configuredCharacters = data.characters;
+            displayCharacters(configuredCharacters);
+        } catch (error) {
+            errorMessage.textContent = error.message || '配置失败，请稍后再试';
+            errorMessage.classList.add('active');
+        } finally {
+            btnConfigure.disabled = false;
+            loadingSection.classList.remove('active');
+        }
+    });
+
+    function displayCharacters(chars) {
+        // 计算缓存命中统计
+        const hitCount = chars.filter(c => c._cached).length;
+        const missCount = chars.filter(c => !c._cached).length;
+
+        // 显示缓存统计
+        if (hitCount > 0 || missCount > 0) {
+            const summaryHtml = `
+                <div class="cache-summary">
+                    话题设定缓存：<span class="hit-count">${hitCount} 命中</span> / <span class="miss-count">${missCount} 实时生成</span>
+                </div>
+            `;
+            charactersList.innerHTML = summaryHtml;
+        } else {
+            charactersList.innerHTML = '';
+        }
+
+        charactersList.innerHTML += chars.map((char, idx) => `
+            <div class="character-config-card" data-index="${idx}">
+                <div class="char-header" onclick="toggleCard(${idx})">
+                    <div class="char-avatar">
+                        ${char.name.charAt(0)}
+                        <span class="checkmark">✓</span>
+                    </div>
+                    <div class="char-info">
+                        <h3>${escapeHtml(char.name)}${char._cached ? '<span class="cache-badge hit">缓存命中</span>' : '<span class="cache-badge miss">实时生成</span>'}</h3>
+                        <div class="era">${escapeHtml(char.era)}</div>
+                    </div>
+                    <span class="expand-icon">▼</span>
+                </div>
+
+                <div class="config-details">
+                    <div class="config-item">
+                        <div class="config-label">简介</div>
+                        <div class="config-value">${escapeHtml(char.bio || '暂无')}</div>
+                    </div>
+
+                    <div class="config-item">
+                        <div class="config-label">背景</div>
+                        <div class="config-value">${escapeHtml(char.background || '暂无')}</div>
+                    </div>
+
+                    <div class="config-item">
+                        <div class="config-label">核心观点</div>
+                        <div class="viewpoints-list">
+                            ${Object.entries(char.viewpoints || {}).map(([key, value]) =>
+                                `<span class="viewpoint-tag">${escapeHtml(key)}: ${escapeHtml(value)}</span>`
+                            ).join('')}
+                        </div>
+                    </div>
+
+                    <div class="config-item">
+                        <div class="config-label">语言风格</div>
+                        <div class="language-style">
+                            <div class="style-item">
+                                <div class="label">语气</div>
+                                <div class="value">${escapeHtml(char.language_style?.tone || '中性')}</div>
+                            </div>
+                            <div class="style-item">
+                                <div class="label">说话习惯</div>
+                                <div class="value">${escapeHtml(char.language_style?.speaking_habits || '一般')}</div>
+                            </div>
+                        </div>
+                        <div style="margin-top: 8px;">
+                            <div class="label">常用表达</div>
+                            <div style="color: #666; font-size: 0.85rem; margin-top: 4px;">
+                                ${(char.language_style?.catchphrases || []).join('、')}
+                            </div>
+                        </div>
+                    </div>
+
+                    ${char.temporal_constraints ? `
+                    <div class="config-item">
+                        <div class="config-label">时代边界</div>
+                        <div class="temporal-constraints">
+                            <div class="constraint-box can">
+                                <div class="label">可以讨论</div>
+                                <div class="value" style="font-size: 0.8rem;">${(char.temporal_constraints.can_discuss || []).join('、')}</div>
+                            </div>
+                            <div class="constraint-box cannot">
+                                <div class="label">不能讨论</div>
+                                <div class="value" style="font-size: 0.8rem;">${(char.temporal_constraints.cannot_discuss || []).join('、')}</div>
+                            </div>
+                        </div>
+                    </div>
+                    ` : ''}
+
+                    ${char.representative_articles?.length ? `
+                    <div class="config-item">
+                        <div class="config-label">代表文章</div>
+                        <div class="articles-list">
+                            ${char.representative_articles.map(article => `
+                                <div class="article-item">
+                                    <div class="article-title">${escapeHtml(article.title || '')}</div>
+                                    ${article.source ? `<div class="article-source">${escapeHtml(article.source)}</div>` : ''}
+                                    <div class="article-content">${escapeHtml(article.content || '')}</div>
+                                </div>
+                            `).join('')}
+                        </div>
+                    </div>
+                    ` : ''}
+                </div>
+            </div>
+        `).join('');
+
+        charactersSection.classList.add('active');
+        btnStart.classList.add('active');
+    }
+
+    function toggleCard(idx) {
+        const card = document.querySelector(`.character-config-card[data-index="${idx}"]`);
+        card.classList.toggle('expanded');
+    }
+
+    btnStart.addEventListener('click', async () => {
+        btnStart.disabled = true;
+        btnStart.textContent = '正在创建讨论...';
+
+        try {
+            const response = await fetch('/roundtable/api/start/', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    topic: topic,
+                    characters: configuredCharacters,
+                    user_role: userRole
+                })
+            });
+
+            const data = await response.json();
+
+            if (data.error) {
+                throw new Error(data.error);
+            }
+
+            // Redirect to discussion page with user_role
+            window.location.href = `/roundtable/d/${data.discussion_id}/?role=${userRole}`;
+
+        } catch (error) {
+            alert('创建讨论失败: ' + error.message);
+            btnStart.disabled = false;
+            btnStart.textContent = '开始讨论';
+        }
+    });
+
+    function escapeHtml(text) {
+        if (!text) return '';
+        const div = document.createElement('div');
+        div.textContent = String(text);
+        return div.innerHTML;
+    }
+</script>
+{% endblock %}

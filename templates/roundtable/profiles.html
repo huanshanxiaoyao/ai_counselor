@@ -1,0 +1,743 @@
+{% extends 'common/base.html' %}
+{% load static %}
+
+{% block title %}人物设定管理 - 圆桌会谈{% endblock %}
+
+{% block extra_css %}
+<style>
+    .profiles-container {
+        max-width: 1200px;
+        margin: 0 auto;
+        padding: 20px;
+    }
+
+    .page-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 30px;
+    }
+
+    .page-header h1 {
+        font-size: 1.8rem;
+        color: #1a1a2e;
+        margin: 0;
+    }
+
+    .tabs {
+        display: flex;
+        gap: 8px;
+        margin-bottom: 24px;
+        border-bottom: 2px solid #eee;
+        padding-bottom: 8px;
+    }
+
+    .tab-btn {
+        padding: 10px 24px;
+        border: none;
+        background: transparent;
+        color: #666;
+        font-size: 0.95rem;
+        cursor: pointer;
+        border-radius: 8px 8px 0 0;
+        transition: all 0.2s;
+    }
+
+    .tab-btn:hover {
+        background: #f5f5f5;
+    }
+
+    .tab-btn.active {
+        background: linear-gradient(135deg, #ff6b6b 0%, #ffa500 100%);
+        color: white;
+    }
+
+    .tab-content {
+        display: none;
+    }
+
+    .tab-content.active {
+        display: block;
+    }
+
+    .card {
+        background: white;
+        border-radius: 12px;
+        box-shadow: 0 2px 12px rgba(0,0,0,0.08);
+        padding: 24px;
+        margin-bottom: 20px;
+    }
+
+    .card-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 16px;
+        padding-bottom: 12px;
+        border-bottom: 1px solid #eee;
+    }
+
+    .card-title {
+        font-size: 1.1rem;
+        font-weight: 600;
+        color: #1a1a2e;
+    }
+
+    .stats-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+        gap: 16px;
+    }
+
+    .stat-box {
+        background: #f8f9fa;
+        border-radius: 8px;
+        padding: 16px;
+        text-align: center;
+    }
+
+    .stat-value {
+        font-size: 1.8rem;
+        font-weight: bold;
+        color: #ff6b6b;
+    }
+
+    .stat-label {
+        font-size: 0.85rem;
+        color: #666;
+        margin-top: 4px;
+    }
+
+    .profile-list {
+        display: grid;
+        gap: 12px;
+    }
+
+    .profile-item {
+        display: flex;
+        align-items: center;
+        gap: 16px;
+        padding: 16px;
+        background: #f8f9fa;
+        border-radius: 8px;
+        cursor: pointer;
+        transition: all 0.2s;
+    }
+
+    .profile-item:hover {
+        background: #f0f0f0;
+    }
+
+    .profile-avatar {
+        width: 48px;
+        height: 48px;
+        border-radius: 50%;
+        background: linear-gradient(135deg, #4caf50, #8bc34a);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 1.2rem;
+        font-weight: bold;
+        color: white;
+        flex-shrink: 0;
+    }
+
+    .profile-info {
+        flex: 1;
+        min-width: 0;
+    }
+
+    .profile-name {
+        font-weight: 600;
+        color: #1a1a2e;
+        margin-bottom: 4px;
+    }
+
+    .profile-era {
+        font-size: 0.85rem;
+        color: #666;
+    }
+
+    .profile-status {
+        padding: 4px 12px;
+        border-radius: 12px;
+        font-size: 0.8rem;
+        font-weight: 500;
+    }
+
+    .status-configured {
+        background: #e8f5e9;
+        color: #2e7d32;
+    }
+
+    .cache-list {
+        display: grid;
+        gap: 8px;
+    }
+
+    .cache-item {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        padding: 12px 16px;
+        background: #f8f9fa;
+        border-radius: 8px;
+    }
+
+    .cache-key {
+        font-weight: 500;
+        color: #333;
+    }
+
+    .cache-time {
+        font-size: 0.8rem;
+        color: #999;
+    }
+
+    .btn {
+        padding: 8px 16px;
+        border: none;
+        border-radius: 6px;
+        font-size: 0.85rem;
+        cursor: pointer;
+        transition: all 0.2s;
+    }
+
+    .btn-danger {
+        background: #ffebee;
+        color: #c62828;
+    }
+
+    .btn-danger:hover {
+        background: #ffcdd2;
+    }
+
+    .btn-secondary {
+        background: #f5f5f5;
+        color: #333;
+    }
+
+    .btn-secondary:hover {
+        background: #e0e0e0;
+    }
+
+    .detail-modal {
+        display: none;
+        position: fixed;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        background: rgba(0,0,0,0.5);
+        z-index: 1000;
+        align-items: center;
+        justify-content: center;
+    }
+
+    .detail-modal.active {
+        display: flex;
+    }
+
+    .detail-content {
+        background: white;
+        border-radius: 12px;
+        max-width: 800px;
+        width: 90%;
+        max-height: 90vh;
+        overflow-y: auto;
+        padding: 24px;
+    }
+
+    .detail-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 20px;
+    }
+
+    .detail-title {
+        font-size: 1.3rem;
+        font-weight: 600;
+        color: #1a1a2e;
+    }
+
+    .close-btn {
+        width: 32px;
+        height: 32px;
+        border: none;
+        background: #f5f5f5;
+        border-radius: 50%;
+        cursor: pointer;
+        font-size: 1.2rem;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+    }
+
+    .detail-section {
+        margin-bottom: 20px;
+    }
+
+    .detail-section-title {
+        font-size: 0.85rem;
+        color: #999;
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+        margin-bottom: 8px;
+    }
+
+    .detail-section-content {
+        background: #f8f9fa;
+        border-radius: 8px;
+        padding: 16px;
+        line-height: 1.8;
+        white-space: pre-wrap;
+        font-size: 0.95rem;
+        color: #333;
+    }
+
+    .empty-state {
+        text-align: center;
+        padding: 40px;
+        color: #999;
+    }
+
+    .loading {
+        text-align: center;
+        padding: 40px;
+    }
+
+    .spinner {
+        width: 40px;
+        height: 40px;
+        border: 3px solid rgba(255,107,107,0.2);
+        border-top-color: #ff6b6b;
+        border-radius: 50%;
+        animation: spin 1s linear infinite;
+        margin: 0 auto 16px;
+    }
+
+    @keyframes spin {
+        to { transform: rotate(360deg); }
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="profiles-container">
+    <div class="page-header">
+        <h1>人物设定管理</h1>
+        <button onclick="location.reload()" class="btn btn-secondary">🔄 刷新</button>
+    </div>
+
+    <div class="tabs">
+        <button class="tab-btn active" data-tab="base-profiles">基础设定</button>
+        <button class="tab-btn" data-tab="candidates">候选队列</button>
+        <button class="tab-btn" data-tab="cache">话题缓存</button>
+    </div>
+
+    <div id="base-profiles" class="tab-content active">
+        <div class="card">
+            <div class="card-header">
+                <span class="card-title">已配置的基础设定</span>
+            </div>
+            <div id="profiles-list" class="profile-list">
+                <div class="loading">
+                    <div class="spinner"></div>
+                    <p>加载中...</p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div id="cache" class="tab-content">
+        <div class="card">
+            <div class="card-header">
+                <span class="card-title">缓存统计</span>
+                <button onclick="clearCache()" class="btn btn-danger">清空缓存</button>
+            </div>
+            <div id="cache-stats" class="stats-grid">
+                <div class="loading">
+                    <div class="spinner"></div>
+                </div>
+            </div>
+        </div>
+
+        <div class="card">
+            <div class="card-header">
+                <span class="card-title">缓存条目</span>
+            </div>
+            <div id="cache-list" class="cache-list">
+                <div class="empty-state">暂无缓存数据</div>
+            </div>
+        </div>
+    </div>
+
+    <div id="candidates" class="tab-content">
+        <div class="card">
+            <div class="card-header">
+                <span class="card-title">候选队列统计</span>
+                <button onclick="clearCandidates()" class="btn btn-danger">清空队列</button>
+            </div>
+            <div id="candidate-stats" class="stats-grid">
+                <div class="loading">
+                    <div class="spinner"></div>
+                </div>
+            </div>
+        </div>
+
+        <div class="card">
+            <div class="card-header">
+                <span class="card-title">候选角色列表</span>
+                <span style="font-size:0.85rem;color:#666;">（被推荐但无离线基础设定的角色）</span>
+            </div>
+            <div id="candidate-list" class="profile-list">
+                <div class="empty-state">暂无候选角色</div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div id="detail-modal" class="detail-modal">
+    <div class="detail-content">
+        <div class="detail-header">
+            <span id="detail-title" class="detail-title">角色设定详情</span>
+            <button class="close-btn" onclick="closeModal()">×</button>
+        </div>
+        <div id="detail-body"></div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    const tabs = document.querySelectorAll('.tab-btn');
+    const tabContents = document.querySelectorAll('.tab-content');
+
+    tabs.forEach(tab => {
+        tab.addEventListener('click', () => {
+            tabs.forEach(t => t.classList.remove('active'));
+            tabContents.forEach(c => c.classList.remove('active'));
+            tab.classList.add('active');
+            document.getElementById(tab.dataset.tab).classList.add('active');
+        });
+    });
+
+    async function loadProfiles() {
+        const container = document.getElementById('profiles-list');
+        try {
+            const response = await fetch('/roundtable/api/profiles/');
+            const data = await response.json();
+
+            if (data.profiles && data.profiles.length > 0) {
+                container.innerHTML = data.profiles.map(p => `
+                    <div class="profile-item" onclick="showProfileDetail('${p.name}')">
+                        <div class="profile-avatar">${p.name.charAt(0)}</div>
+                        <div class="profile-info">
+                            <div class="profile-name">${escapeHtml(p.name)}</div>
+                            <div class="profile-era">${escapeHtml(p.era)}</div>
+                        </div>
+                        <span class="profile-status status-configured">✓ 已配置</span>
+                    </div>
+                `).join('');
+            } else {
+                container.innerHTML = '<div class="empty-state">暂无已配置的基础设定</div>';
+            }
+        } catch (error) {
+            container.innerHTML = '<div class="empty-state">加载失败: ' + error.message + '</div>';
+        }
+    }
+
+    async function loadCacheStats() {
+        const statsContainer = document.getElementById('cache-stats');
+        const listContainer = document.getElementById('cache-list');
+
+        try {
+            const response = await fetch('/roundtable/api/cache/stats/');
+            const data = await response.json();
+
+            statsContainer.innerHTML = `
+                <div class="stat-box">
+                    <div class="stat-value">${data.stats.size}</div>
+                    <div class="stat-label">当前条目</div>
+                </div>
+                <div class="stat-box">
+                    <div class="stat-value">${data.stats.max_size}</div>
+                    <div class="stat-label">最大容量</div>
+                </div>
+                <div class="stat-box">
+                    <div class="stat-value">${data.stats.utilization}</div>
+                    <div class="stat-label">利用率</div>
+                </div>
+            `;
+
+            if (data.entries && data.entries.length > 0) {
+                listContainer.innerHTML = data.entries.map(e => `
+                    <div class="cache-item">
+                        <div>
+                            <div class="cache-key">${escapeHtml(e.character_name)} : ${escapeHtml(e.topic)}</div>
+                            <div class="cache-time">${e.created_at}</div>
+                        </div>
+                        <button onclick="deleteCacheEntry('${escapeHtml(e.character_name)}', '${escapeHtml(e.topic)}')" class="btn btn-danger">删除</button>
+                    </div>
+                `).join('');
+            } else {
+                listContainer.innerHTML = '<div class="empty-state">暂无缓存数据</div>';
+            }
+        } catch (error) {
+            statsContainer.innerHTML = '<div class="empty-state">加载失败</div>';
+            listContainer.innerHTML = '<div class="empty-state">加载失败: ' + error.message + '</div>';
+        }
+    }
+
+    async function showProfileDetail(name) {
+        const modal = document.getElementById('detail-modal');
+        const title = document.getElementById('detail-title');
+        const body = document.getElementById('detail-body');
+
+        title.textContent = name + ' - 基础设定详情';
+        body.innerHTML = '<div class="loading"><div class="spinner"></div><p>加载中...</p></div>';
+        modal.classList.add('active');
+
+        try {
+            const response = await fetch(`/roundtable/api/profiles/${encodeURIComponent(name)}/`);
+            const data = await response.json();
+
+            if (data.profile) {
+                const p = data.profile;
+                body.innerHTML = `
+                    <div class="detail-section">
+                        <div class="detail-section-title">核心身份锁定</div>
+                        <div class="detail-section-content">${escapeHtml(p.core_identity || '暂无')}</div>
+                    </div>
+                    <div class="detail-section">
+                        <div class="detail-section-title">核心人设与生平锚定</div>
+                        <div class="detail-section-content">${escapeHtml(p.core_persona || '暂无')}</div>
+                    </div>
+                    <div class="detail-section">
+                        <div class="detail-section-title">核心思想与价值观</div>
+                        <div class="detail-section-content">${escapeHtml(p.core_values || '暂无')}</div>
+                    </div>
+                    <div class="detail-section">
+                        <div class="detail-section-title">语言风格</div>
+                        <div class="detail-section-content">语气: ${escapeHtml(p.language_style?.tone || '暂无')}
+常用表达: ${(p.language_style?.catchphrases || []).join('、')}
+说话习惯: ${escapeHtml(p.language_style?.speaking_habits || '暂无')}</div>
+                    </div>
+                    <div class="detail-section">
+                        <div class="detail-section-title">知识边界</div>
+                        <div class="detail-section-content">知识截止: ${escapeHtml(p.knowledge_boundary?.knowledge_cutoff || '暂无')}
+可以讨论: ${(p.knowledge_boundary?.can_discuss || []).join('、')}
+不能讨论: ${(p.knowledge_boundary?.cannot_discuss || []).join('、')}</div>
+                    </div>
+                    <div class="detail-section">
+                        <div class="detail-section-title">对话行为准则</div>
+                        <div class="detail-section-content">${escapeHtml(p.behavior_guidelines || '暂无')}</div>
+                    </div>
+                    <div class="detail-section">
+                        <div class="detail-section-title">负面约束</div>
+                        <div class="detail-section-content">${escapeHtml(p.negative_constraints || '暂无')}</div>
+                    </div>
+                    ${p.examples && p.examples.length > 0 ? `
+                    <div class="detail-section">
+                        <div class="detail-section-title">参考示例</div>
+                        <div class="detail-section-content">${p.examples.map(ex => `用户: ${escapeHtml(ex.user)}\n你: ${escapeHtml(ex.you)}`).join('\n\n')}</div>
+                    </div>
+                    ` : ''}
+                `;
+            } else {
+                body.innerHTML = '<div class="empty-state">未找到该角色的基础设定</div>';
+            }
+        } catch (error) {
+            body.innerHTML = '<div class="empty-state">加载失败: ' + error.message + '</div>';
+        }
+    }
+
+    function closeModal() {
+        document.getElementById('detail-modal').classList.remove('active');
+    }
+
+    async function deleteCacheEntry(characterName, topic) {
+        if (!confirm(`确定删除缓存: ${characterName} : ${topic}?`)) return;
+
+        try {
+            const response = await fetch('/roundtable/api/cache/delete/', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ character_name: characterName, topic: topic })
+            });
+            const data = await response.json();
+            alert(data.message);
+            loadCacheStats();
+        } catch (error) {
+            alert('删除失败: ' + error.message);
+        }
+    }
+
+    async function clearCache() {
+        if (!confirm('确定清空所有缓存？这将导致热门人物+话题的设定需要重新生成。')) return;
+
+        try {
+            const response = await fetch('/roundtable/api/cache/clear/', {
+                method: 'POST'
+            });
+            const data = await response.json();
+            alert(data.message);
+            loadCacheStats();
+        } catch (error) {
+            alert('清空失败: ' + error.message);
+        }
+    }
+
+    // ========== Candidate Queue Functions ==========
+
+    async function loadCandidates() {
+        const statsContainer = document.getElementById('candidate-stats');
+        const listContainer = document.getElementById('candidate-list');
+
+        try {
+            const response = await fetch('/roundtable/api/candidates/');
+            const data = await response.json();
+
+            // Update stats
+            statsContainer.innerHTML = `
+                <div class="stat-box">
+                    <div class="stat-value">${data.stats.total}</div>
+                    <div class="stat-label">总候选数</div>
+                </div>
+                <div class="stat-box">
+                    <div class="stat-value">${data.stats.pending}</div>
+                    <div class="stat-label">待生成</div>
+                </div>
+                <div class="stat-box">
+                    <div class="stat-value">${data.stats.generating}</div>
+                    <div class="stat-label">生成中</div>
+                </div>
+                <div class="stat-box">
+                    <div class="stat-value">${data.stats.completed}</div>
+                    <div class="stat-label">已完成</div>
+                </div>
+            `;
+
+            // Update list
+            if (data.candidates && data.candidates.length > 0) {
+                listContainer.innerHTML = data.candidates.map(c => {
+                    const statusMap = {
+                        'pending': { text: '待生成', class: 'status-pending' },
+                        'generating': { text: '生成中', class: 'status-generating' },
+                        'completed': { text: '已完成', class: 'status-completed' },
+                        'failed': { text: '失败', class: 'status-failed' },
+                    };
+                    const status = statusMap[c.status] || statusMap['pending'];
+                    return `
+                        <div class="profile-item">
+                            <div class="profile-avatar">${c.name.charAt(0)}</div>
+                            <div class="profile-info">
+                                <div class="profile-name">${escapeHtml(c.name)} <span style="font-size:0.8rem;color:#666;">（${escapeHtml(c.era)}）</span></div>
+                                <div class="profile-era">推荐次数: ${c.recommend_count} | 状态: <span class="${status.class}">${status.text}</span></div>
+                            </div>
+                            <div style="display:flex;gap:8px;">
+                                ${c.status === 'pending' || c.status === 'failed' ? `<button onclick="triggerGeneration('${escapeHtml(c.name)}')" class="btn btn-primary" style="background:#4caf50;">生成</button>` : ''}
+                                <button onclick="resetCandidate('${escapeHtml(c.name)}')" class="btn btn-secondary">重置</button>
+                                <button onclick="deleteCandidate('${escapeHtml(c.name)}')" class="btn btn-danger">移除</button>
+                            </div>
+                        </div>
+                    `;
+                }).join('');
+            } else {
+                listContainer.innerHTML = '<div class="empty-state">暂无候选角色</div>';
+            }
+        } catch (error) {
+            statsContainer.innerHTML = '<div class="empty-state">加载失败: ' + error.message + '</div>';
+            listContainer.innerHTML = '<div class="empty-state">加载失败</div>';
+        }
+    }
+
+    async function triggerGeneration(name) {
+        if (!confirm(`确定触发生成 ${name} 的离线基础设定？\n这将需要较长时间。`)) return;
+
+        try {
+            const response = await fetch('/roundtable/api/candidates/trigger/', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ name: name })
+            });
+            const data = await response.json();
+            alert(data.message);
+            loadCandidates();
+        } catch (error) {
+            alert('触发失败: ' + error.message);
+        }
+    }
+
+    async function resetCandidate(name) {
+        if (!confirm(`确定重置 ${name} 的推荐计数？`)) return;
+
+        try {
+            const response = await fetch('/roundtable/api/candidates/reset/', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ name: name })
+            });
+            const data = await response.json();
+            alert(data.message);
+            loadCandidates();
+        } catch (error) {
+            alert('重置失败: ' + error.message);
+        }
+    }
+
+    async function deleteCandidate(name) {
+        if (!confirm(`确定从候选队列中移除 ${name}？`)) return;
+
+        try {
+            const response = await fetch('/roundtable/api/candidates/delete/', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ name: name })
+            });
+            const data = await response.json();
+            alert(data.message);
+            loadCandidates();
+        } catch (error) {
+            alert('移除失败: ' + error.message);
+        }
+    }
+
+    async function clearCandidates() {
+        if (!confirm('确定清空所有候选角色？这不会删除已生成的离线设定。')) return;
+
+        try {
+            const response = await fetch('/roundtable/api/candidates/clear/', {
+                method: 'POST'
+            });
+            const data = await response.json();
+            alert(data.message);
+            loadCandidates();
+        } catch (error) {
+            alert('清空失败: ' + error.message);
+        }
+    }
+
+    function escapeHtml(text) {
+        if (!text) return '';
+        const div = document.createElement('div');
+        div.textContent = String(text);
+        return div.innerHTML;
+    }
+
+    // Tab click handlers
+    document.querySelector('[data-tab="cache"]').addEventListener('click', loadCacheStats);
+    document.querySelector('[data-tab="candidates"]').addEventListener('click', loadCandidates);
+
+    // Initial load
+    loadProfiles();
+</script>
+
+<style>
+    .status-pending { color: #ff9800; }
+    .status-generating { color: #2196f3; }
+    .status-completed { color: #4caf50; }
+    .status-failed { color: #f44336; }
+</style>
+{% endblock %}

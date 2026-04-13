@@ -1,0 +1,27 @@
+{% extends 'common/base.html' %}
+{% load static %}
+
+{% block title %}AI Tools - 智能工具集合{% endblock %}
+
+{% block content %}
+<section class="hero">
+    <h2>欢迎使用 AI 智能工具</h2>
+    <p>探索多种 AI 对话工具，让 AI 帮助你解决问题、提升效率</p>
+</section>
+
+<section class="tools-grid">
+    <a href="{% url 'counselor' %}" class="tool-card">
+        <div class="tool-icon">🧠</div>
+        <h3>AI 心理顾问</h3>
+        <p>集成多个 AI 模型的心理咨询对话工具，同时获得通义千问、DeepSeek、MiniMax 的专业建议</p>
+        <span class="badge">多模型对比</span>
+    </a>
+
+    <a href="{% url 'roundtable:index' %}" class="tool-card">
+        <div class="tool-icon">🪑</div>
+        <h3>圆桌会谈</h3>
+        <p>与历史人物展开跨越时空的对话，听听不同立场、不同背景的声音如何评述同一话题</p>
+        <span class="badge" style="background: rgba(255, 107, 107, 0.2); border-color: rgba(255, 107, 107, 0.3); color: #ff6b6b;">新功能</span>
+    </a>
+</section>
+{% endblock %}
