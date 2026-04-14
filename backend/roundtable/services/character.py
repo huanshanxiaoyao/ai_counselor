@@ -347,18 +347,28 @@ class CharacterAgent:
             basic_info = self._generate_basic_info(name, era, topic)
             language_style = self._generate_language_style(name, era, basic_info.get('background', ''))
 
-        # 2. 检查话题设定缓存
-        cached_topic = self._topic_cache.get(name, topic)
-        topic_cached = cached_topic is not None
-        if cached_topic:
-            # 使用缓存的话题设定
-            viewpoints = cached_topic.viewpoints or basic_info.get('viewpoints', {})
-            articles = cached_topic.representative_articles or []
-            if cached_topic.language_style:
-                language_style = cached_topic.language_style
-            temporal_constraints = cached_topic.temporal_constraints or basic_info.get('temporal_constraints', {})
-            logger.info(f"Using cached topic profile for {name}:{topic}")
-        else:
+        # 2. 检查话题设定缓存（失败不影响配置）
+        topic_cached = False
+        viewpoints = {}
+        articles = []
+        temporal_constraints = {}
+
+        try:
+            cached_topic = self._topic_cache.get(name, topic)
+            topic_cached = cached_topic is not None
+            if cached_topic:
+                # 使用缓存的话题设定
+                viewpoints = cached_topic.viewpoints or basic_info.get('viewpoints', {})
+                articles = cached_topic.representative_articles or []
+                if cached_topic.language_style:
+                    language_style = cached_topic.language_style
+                temporal_constraints = cached_topic.temporal_constraints or basic_info.get('temporal_constraints', {})
+                logger.info(f"Using cached topic profile for {name}:{topic}")
+        except Exception as cache_err:
+            logger.warning(f"Cache read failed for {name}:{topic}, generating fresh: {cache_err}")
+            cached_topic = None
+
+        if not topic_cached:
             # 缓存未命中，生成话题相关设定
             viewpoints, articles, topic_temporal = self._generate_topic_profile(name, era, topic, basic_info.get('background', ''))
 
@@ -367,16 +377,19 @@ class CharacterAgent:
             if viewpoints:
                 basic_info['viewpoints'] = viewpoints
 
-            # 更新缓存
-            self._topic_cache.set(
-                character_name=name,
-                topic=topic,
-                viewpoints=viewpoints,
-                representative_articles=articles,
-                language_style=language_style if has_offline_profile else None,
-                temporal_constraints=temporal_constraints
-            )
-            logger.info(f"Generated and cached topic profile for {name}:{topic}")
+            # 更新缓存（失败不影响配置结果）
+            try:
+                self._topic_cache.set(
+                    character_name=name,
+                    topic=topic,
+                    viewpoints=viewpoints,
+                    representative_articles=articles,
+                    language_style=language_style if has_offline_profile else None,
+                    temporal_constraints=temporal_constraints
+                )
+                logger.info(f"Generated and cached topic profile for {name}:{topic}")
+            except Exception as cache_err:
+                logger.warning(f"Cache write failed for {name}:{topic}, continuing without cache: {cache_err}")
 
         return {
             'name': name,

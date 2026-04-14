@@ -4,7 +4,7 @@
     {% load static %}
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>AI Counselor - 群聊</title>
+    <title>AI Counselor - LLM 对比测试</title>
     <style>
         * {
             margin: 0;
@@ -23,45 +23,227 @@
         .header {
             background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
             color: white;
-            padding: 20px;
-            text-align: center;
+            padding: 15px 20px;
             box-shadow: 0 2px 10px rgba(0,0,0,0.1);
         }
 
         .header h1 {
-            font-size: 24px;
+            font-size: 20px;
             font-weight: 600;
         }
 
         .header p {
-            font-size: 14px;
+            font-size: 13px;
             opacity: 0.9;
-            margin-top: 5px;
+            margin-top: 3px;
         }
 
-        .chat-container {
+        .main-container {
             flex: 1;
             display: flex;
-            gap: 20px;
-            padding: 20px;
-            max-width: 1400px;
-            margin: 0 auto;
+            overflow: hidden;
+        }
+
+        /* Sidebar */
+        .sidebar {
+            width: 280px;
+            background: white;
+            border-right: 1px solid #e0e0e0;
+            display: flex;
+            flex-direction: column;
+            overflow-y: auto;
+        }
+
+        .sidebar-header {
+            padding: 16px 16px 12px;
+            border-bottom: 1px solid #eee;
+            font-weight: 600;
+            color: #333;
+            font-size: 14px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .sidebar-header-hint {
+            font-size: 11px;
+            color: #999;
+            font-weight: normal;
+        }
+
+        .provider-list {
+            padding: 12px;
+        }
+
+        .provider-item {
+            border: 2px solid #e8e8e8;
+            border-radius: 12px;
+            margin-bottom: 12px;
+            overflow: hidden;
+            transition: all 0.2s ease;
+            background: #fff;
+        }
+
+        .provider-item:hover {
+            border-color: #c4c8e0;
+            box-shadow: 0 2px 8px rgba(102, 126, 234, 0.1);
+        }
+
+        .provider-item.selected {
+            border-color: #667eea;
+            box-shadow: 0 4px 12px rgba(102, 126, 234, 0.2);
+        }
+
+        .provider-header {
+            display: flex;
+            align-items: center;
+            padding: 14px;
+            cursor: pointer;
+            gap: 12px;
+            user-select: none;
+            -webkit-tap-highlight-color: transparent;
+        }
+
+        .provider-header:active {
+            background: #f8f9fa;
+        }
+
+        .provider-checkbox {
+            width: 20px;
+            height: 20px;
+            cursor: pointer;
+            flex-shrink: 0;
+            accent-color: #667eea;
+        }
+
+        .provider-avatar {
+            width: 36px;
+            height: 36px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: white;
+            font-weight: bold;
+            font-size: 15px;
+            flex-shrink: 0;
+        }
+
+        .provider-name {
+            flex: 1;
+            font-weight: 600;
+            font-size: 14px;
+            color: #333;
+        }
+
+        .provider-toggle-icon {
+            width: 20px;
+            height: 20px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: #999;
+            font-size: 12px;
+            transition: transform 0.2s;
+            flex-shrink: 0;
+        }
+
+        .provider-item.selected .provider-toggle-icon {
+            transform: rotate(180deg);
+            color: #667eea;
+        }
+
+        .provider-selector {
+            padding: 0 14px 14px;
+            display: none;
+            border-top: 1px solid #f0f0f0;
+            margin-top: 4px;
+            padding-top: 12px;
+        }
+
+        .provider-item.selected .provider-selector {
+            display: block;
+            animation: slideDown 0.2s ease;
+        }
+
+        @keyframes slideDown {
+            from {
+                opacity: 0;
+                transform: translateY(-8px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        .model-select {
             width: 100%;
+            padding: 10px 12px;
+            border: 2px solid #e8e8e8;
+            border-radius: 8px;
+            font-size: 13px;
+            background: #fafafa;
+            cursor: pointer;
+            transition: all 0.2s;
+            font-weight: 500;
+        }
+
+        .model-select:hover {
+            border-color: #667eea;
+            background: #fff;
+        }
+
+        .model-select:focus {
+            outline: none;
+            border-color: #667eea;
+            background: #fff;
+            box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
+        }
+
+        .provider-selector-label {
+            font-size: 11px;
+            color: #888;
+            margin-bottom: 6px;
+            font-weight: 500;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        /* Main Content */
+        .content {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+            padding: 15px;
+            gap: 15px;
+        }
+
+        .chat-grid {
+            flex: 1;
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 15px;
             overflow: hidden;
         }
 
         .ai-panel {
-            flex: 1;
             background: white;
             border-radius: 12px;
             box-shadow: 0 2px 10px rgba(0,0,0,0.1);
             display: flex;
             flex-direction: column;
             overflow: hidden;
+            min-height: 300px;
+        }
+
+        .ai-panel.hidden {
+            display: none;
         }
 
         .ai-panel-header {
-            padding: 15px;
+            padding: 12px 15px;
             background: #f8f9fa;
             border-bottom: 1px solid #eee;
             display: flex;
@@ -70,28 +252,50 @@
         }
 
         .ai-avatar {
-            width: 40px;
-            height: 40px;
+            width: 36px;
+            height: 36px;
             border-radius: 50%;
             display: flex;
             align-items: center;
             justify-content: center;
-            font-size: 20px;
             color: white;
             font-weight: bold;
-        }
-
-        .ai-qwen .ai-avatar { background: #ff6b6b; }
-        .ai-deepseek .ai-avatar { background: #4ecdc4; }
-        .ai-minimax .ai-avatar { background: #45b7d1; }
-
-        .ai-name {
-            font-weight: 600;
             font-size: 16px;
         }
 
+        .ai-info {
+            flex: 1;
+        }
+
+        .ai-name {
+            font-weight: 600;
+            font-size: 14px;
+        }
+
+        .ai-model {
+            font-size: 11px;
+            color: #888;
+        }
+
+        .ai-stats {
+            display: flex;
+            gap: 12px;
+            font-size: 11px;
+            color: #666;
+        }
+
+        .stat-item {
+            display: flex;
+            align-items: center;
+            gap: 3px;
+        }
+
+        .stat-item .label {
+            color: #999;
+        }
+
         .ai-status {
-            font-size: 12px;
+            font-size: 11px;
             color: #888;
         }
 
@@ -105,18 +309,18 @@
 
         .ai-messages {
             flex: 1;
-            padding: 15px;
+            padding: 12px;
             overflow-y: auto;
             display: flex;
             flex-direction: column;
-            gap: 15px;
+            gap: 10px;
         }
 
         .message {
-            padding: 12px 15px;
-            border-radius: 12px;
-            line-height: 1.6;
-            font-size: 14px;
+            padding: 10px 12px;
+            border-radius: 10px;
+            line-height: 1.5;
+            font-size: 13px;
             white-space: pre-wrap;
             word-break: break-word;
         }
@@ -129,7 +333,7 @@
         }
 
         .message.ai {
-            background: #f0f0f0;
+            background: #f5f5f5;
             color: #333;
             align-self: flex-start;
             border-bottom-left-radius: 4px;
@@ -141,10 +345,46 @@
             border: 1px solid #fcc;
         }
 
+        .typing-indicator {
+            display: none;
+            padding: 12px;
+            align-items: center;
+            gap: 8px;
+            color: #888;
+            font-size: 12px;
+        }
+
+        .typing-indicator.active {
+            display: flex;
+        }
+
+        .typing-dots {
+            display: flex;
+            gap: 4px;
+        }
+
+        .typing-dots span {
+            width: 5px;
+            height: 5px;
+            background: #667eea;
+            border-radius: 50%;
+            animation: typing 1.4s infinite;
+        }
+
+        .typing-dots span:nth-child(2) { animation-delay: 0.2s; }
+        .typing-dots span:nth-child(3) { animation-delay: 0.4s; }
+
+        @keyframes typing {
+            0%, 60%, 100% { transform: translateY(0); opacity: 0.4; }
+            30% { transform: translateY(-4px); opacity: 1; }
+        }
+
+        /* Input Area */
         .input-area {
+            background: white;
             padding: 15px;
-            background: #f8f9fa;
-            border-top: 1px solid #eee;
+            border-radius: 12px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
         }
 
         .input-wrapper {
@@ -190,124 +430,332 @@
             cursor: not-allowed;
         }
 
-        .typing-indicator {
-            display: none;
-            padding: 12px 15px;
+        /* Quick Select Buttons */
+        .quick-select {
+            display: flex;
+            gap: 8px;
+            margin-bottom: 12px;
+            flex-wrap: wrap;
+            padding: 4px 0;
         }
 
-        .typing-indicator.active {
+        .quick-btn {
+            padding: 8px 14px;
+            background: #f8f9fa;
+            border: 2px solid #e8e8e8;
+            border-radius: 10px;
+            font-size: 13px;
+            cursor: pointer;
+            transition: all 0.2s;
+            font-weight: 500;
+            color: #555;
+        }
+
+        .quick-btn:hover {
+            background: #fff;
+            border-color: #667eea;
+            color: #667eea;
+            transform: translateY(-1px);
+        }
+
+        .quick-btn:active {
+            transform: translateY(0);
+        }
+
+        .quick-btn.active {
+            background: #667eea;
+            color: white;
+            border-color: #667eea;
+        }
+
+        /* Empty State */
+        .empty-state {
+            flex: 1;
             display: flex;
             align-items: center;
-            gap: 8px;
-            color: #888;
-            font-size: 13px;
+            justify-content: center;
+            color: #999;
+            font-size: 14px;
+            background: #f9f9f9;
+            border-radius: 12px;
         }
 
-        .typing-dots {
-            display: flex;
-            gap: 4px;
-        }
-
-        .typing-dots span {
-            width: 6px;
-            height: 6px;
-            background: #667eea;
-            border-radius: 50%;
-            animation: typing 1.4s infinite;
-        }
-
-        .typing-dots span:nth-child(2) { animation-delay: 0.2s; }
-        .typing-dots span:nth-child(3) { animation-delay: 0.4s; }
-
-        @keyframes typing {
-            0%, 60%, 100% { transform: translateY(0); opacity: 0.4; }
-            30% { transform: translateY(-6px); opacity: 1; }
-        }
-
-        @media (max-width: 900px) {
-            .chat-container {
-                flex-direction: column;
+        @media (max-width: 1000px) {
+            .chat-grid {
+                grid-template-columns: 1fr;
             }
-
-            .ai-panel {
-                max-height: 400px;
+            .sidebar {
+                width: 200px;
             }
         }
     </style>
 </head>
 <body>
     <div class="header">
-        <div style="display: flex; justify-content: space-between; align-items: center; max-width: 1400px; margin: 0 auto;">
-            <div>
-                <h1>AI Counselor</h1>
-                <p>同时向 通义千问、DeepSeek、MiniMax 提问，获取多元视角的回答</p>
-            </div>
-            <a href="{% url 'home' %}" style="color: white; text-decoration: none; font-size: 14px;">← 返回首页</a>
-        </div>
+        <h1>AI Counselor - LLM 对比测试</h1>
+        <p>选择多个 LLM 提供商同时测试，比较响应时间和 token 消耗</p>
     </div>
 
-    <div class="chat-container">
-        <div class="ai-panel ai-qwen">
-            <div class="ai-panel-header">
-                <div class="ai-avatar">Q</div>
-                <div>
-                    <div class="ai-name">通义千问</div>
-                    <div class="ai-status" id="status-qwen">待机中</div>
-                </div>
+    <div class="main-container">
+        <div class="sidebar">
+            <div class="sidebar-header">
+                <span>选择提供商</span>
+                <span class="sidebar-header-hint">点击卡片选择</span>
             </div>
-            <div class="ai-messages" id="messages-qwen"></div>
-            <div class="typing-indicator" id="typing-qwen">
-                <div class="typing-dots"><span></span><span></span><span></span></div>
-                思考中...
-            </div>
+            <div class="provider-list" id="provider-list"></div>
         </div>
 
-        <div class="ai-panel ai-deepseek">
-            <div class="ai-panel-header">
-                <div class="ai-avatar">D</div>
-                <div>
-                    <div class="ai-name">DeepSeek</div>
-                    <div class="ai-status" id="status-deepseek">待机中</div>
+        <div class="content">
+            <div class="quick-select" id="quick-select">
+                <button class="quick-btn" data-count="3">选择 3 个</button>
+                <button class="quick-btn" data-count="4">选择 4 个</button>
+                <button class="quick-btn" data-action="all">全选</button>
+                <button class="quick-btn" data-action="none">清空</button>
+            </div>
+
+            <div class="chat-grid" id="chat-grid"></div>
+
+            <div class="input-area">
+                <div class="input-wrapper">
+                    <textarea id="prompt-input" placeholder="输入你的问题..." rows="2"></textarea>
+                    <button id="send-btn">发送</button>
                 </div>
             </div>
-            <div class="ai-messages" id="messages-deepseek"></div>
-            <div class="typing-indicator" id="typing-deepseek">
-                <div class="typing-dots"><span></span><span></span><span></span></div>
-                思考中...
-            </div>
-        </div>
-
-        <div class="ai-panel ai-minimax">
-            <div class="ai-panel-header">
-                <div class="ai-avatar">M</div>
-                <div>
-                    <div class="ai-name">MiniMax</div>
-                    <div class="ai-status" id="status-minimax">待机中</div>
-                </div>
-            </div>
-            <div class="ai-messages" id="messages-minimax"></div>
-            <div class="typing-indicator" id="typing-minimax">
-                <div class="typing-dots"><span></span><span></span><span></span></div>
-                思考中...
-            </div>
-        </div>
-    </div>
-
-    <div class="input-area">
-        <div class="input-wrapper">
-            <textarea id="prompt-input" placeholder="输入你的问题..." rows="2"></textarea>
-            <button id="send-btn">发送</button>
         </div>
     </div>
 
     <script>
-        const promptInput = document.getElementById('prompt-input');
-        const sendBtn = document.getElementById('send-btn');
+        // Provider data from Django context
+        const providersData = {{ providers|safe }};
+        let selectedProviders = {};
+        let isToggling = {}; // 防止无限循环的标志
 
-        const providers = ['qwen', 'deepseek', 'minimax'];
+        // Initialize
+        function init() {
+            renderProviders();
+            setupQuickSelect();
+            setupEventListeners();
+            renderPanels();
+        }
 
-        function addMessage(provider, content, type = 'ai') {
-            const container = document.getElementById(`messages-${provider}`);
+        function renderProviders() {
+            const list = document.getElementById('provider-list');
+            list.innerHTML = '';
+
+            for (const [id, data] of Object.entries(providersData)) {
+                const item = document.createElement('div');
+                item.className = 'provider-item';
+                item.dataset.provider = id;
+
+                const models = data.models && data.models.length > 0 ? data.models : ['default'];
+                const modelOptions = models.map(m => `<option value="${m}">${m}</option>`).join('');
+
+                item.innerHTML = `
+                    <div class="provider-header">
+                        <input type="checkbox" class="provider-checkbox" id="cb-${id}">
+                        <div class="provider-avatar" style="background: ${data.color}">${data.name.charAt(0)}</div>
+                        <div class="provider-name">${data.name}</div>
+                        <div class="provider-toggle-icon">▼</div>
+                    </div>
+                    <div class="provider-selector">
+                        <div class="provider-selector-label">选择模型</div>
+                        <select class="model-select" id="model-${id}">
+                            ${modelOptions}
+                        </select>
+                    </div>
+                `;
+                list.appendChild(item);
+
+                // Add click handler to the entire header
+                const header = item.querySelector('.provider-header');
+                const checkbox = item.querySelector('.provider-checkbox');
+
+                header.addEventListener('click', (e) => {
+                    // Don't toggle if clicking directly on the select element
+                    if (e.target.closest('select')) {
+                        return;
+                    }
+                    e.preventDefault();
+                    safeToggleProvider(id);
+                });
+
+                // Also handle checkbox click directly
+                checkbox.addEventListener('click', (e) => {
+                    e.stopPropagation();
+                });
+
+                checkbox.addEventListener('change', (e) => {
+                    e.stopPropagation();
+                    safeToggleProvider(id);
+                });
+
+                // Handle model select changes
+                const modelSelect = item.querySelector('.model-select');
+                modelSelect.addEventListener('change', (e) => {
+                    e.stopPropagation();
+                    if (selectedProviders[id]) {
+                        selectedProviders[id].model = modelSelect.value;
+                        renderPanels();
+                    }
+                });
+
+                modelSelect.addEventListener('click', (e) => {
+                    e.stopPropagation();
+                });
+            }
+        }
+
+        function safeToggleProvider(providerId) {
+            // 防止循环调用
+            if (isToggling[providerId]) {
+                return;
+            }
+            isToggling[providerId] = true;
+
+            try {
+                toggleProvider(providerId);
+            } finally {
+                setTimeout(() => {
+                    isToggling[providerId] = false;
+                }, 0);
+            }
+        }
+
+        function toggleProvider(providerId) {
+            const item = document.querySelector(`.provider-item[data-provider="${providerId}"]`);
+            const checkbox = document.getElementById(`cb-${providerId}`);
+
+            if (!item || !checkbox) {
+                console.warn('Element not found for provider:', providerId);
+                return;
+            }
+
+            if (selectedProviders[providerId]) {
+                delete selectedProviders[providerId];
+                item.classList.remove('selected');
+                checkbox.checked = false;
+            } else {
+                const modelSelect = document.getElementById(`model-${providerId}`);
+                if (!modelSelect) {
+                    console.warn('Model select not found for provider:', providerId);
+                    return;
+                }
+                selectedProviders[providerId] = {
+                    provider: providerId,
+                    model: modelSelect.value,
+                    name: providersData[providerId].name,
+                    color: providersData[providerId].color
+                };
+                item.classList.add('selected');
+                checkbox.checked = true;
+            }
+
+            renderPanels();
+        }
+
+        function renderPanels() {
+            const grid = document.getElementById('chat-grid');
+            if (!grid) return;
+
+            const entries = Object.entries(selectedProviders);
+
+            if (entries.length === 0) {
+                grid.innerHTML = '<div class="empty-state">请在左侧选择至少一个 LLM 提供商</div>';
+                return;
+            }
+
+            // Adjust grid columns based on count
+            const count = entries.length;
+            if (count === 1) grid.style.gridTemplateColumns = '1fr';
+            else if (count === 2) grid.style.gridTemplateColumns = '1fr 1fr';
+            else grid.style.gridTemplateColumns = 'repeat(3, 1fr)';
+
+            grid.innerHTML = entries.map(([key, data]) => `
+                <div class="ai-panel" id="panel-${key}">
+                    <div class="ai-panel-header">
+                        <div class="ai-avatar" style="background: ${data.color}">${data.name.charAt(0)}</div>
+                        <div class="ai-info">
+                            <div class="ai-name">${data.name}</div>
+                            <div class="ai-model" id="model-display-${key}">${data.model}</div>
+                        </div>
+                        <div class="ai-stats" id="stats-${key}">
+                            <span class="stat-item"><span class="label">耗时:</span><span id="time-${key}">-</span></span>
+                            <span class="stat-item"><span class="label">Token:</span><span id="tokens-${key}">-</span></span>
+                        </div>
+                        <div class="ai-status" id="status-${key}">待机中</div>
+                    </div>
+                    <div class="ai-messages" id="messages-${key}"></div>
+                    <div class="typing-indicator" id="typing-${key}">
+                        <div class="typing-dots"><span></span><span></span><span></span></div>
+                        思考中...
+                    </div>
+                </div>
+            `).join('');
+        }
+
+        function setupQuickSelect() {
+            const quickSelect = document.getElementById('quick-select');
+            if (!quickSelect) return;
+
+            quickSelect.addEventListener('click', (e) => {
+                const btn = e.target.closest('.quick-btn');
+                if (!btn) return;
+
+                const count = btn.dataset.count;
+                const action = btn.dataset.action;
+
+                if (action === 'all') {
+                    // Select all
+                    Object.keys(providersData).forEach(id => {
+                        if (!selectedProviders[id]) {
+                            safeToggleProvider(id);
+                        }
+                    });
+                } else if (action === 'none') {
+                    // Create a copy of keys to avoid mutation during iteration
+                    const currentKeys = [...Object.keys(selectedProviders)];
+                    currentKeys.forEach(id => {
+                        safeToggleProvider(id);
+                    });
+                } else if (count) {
+                    // Select first N providers
+                    const keys = Object.keys(providersData).slice(0, parseInt(count));
+                    // Clear first
+                    const currentKeys = [...Object.keys(selectedProviders)];
+                    currentKeys.forEach(id => {
+                        safeToggleProvider(id);
+                    });
+                    // Select first N
+                    keys.forEach(id => {
+                        if (!selectedProviders[id]) {
+                            safeToggleProvider(id);
+                        }
+                    });
+                }
+            });
+        }
+
+        function setupEventListeners() {
+            const sendBtn = document.getElementById('send-btn');
+            const promptInput = document.getElementById('prompt-input');
+
+            if (sendBtn) {
+                sendBtn.addEventListener('click', sendMessage);
+            }
+            if (promptInput) {
+                promptInput.addEventListener('keydown', (e) => {
+                    if (e.key === 'Enter' && !e.shiftKey) {
+                        e.preventDefault();
+                        sendMessage();
+                    }
+                });
+            }
+        }
+
+        function addMessage(panelKey, content, type = 'ai') {
+            const container = document.getElementById(`messages-${panelKey}`);
+            if (!container) return;
+
             const message = document.createElement('div');
             message.className = `message ${type}`;
             message.textContent = content;
@@ -315,43 +763,67 @@
             container.scrollTop = container.scrollHeight;
         }
 
-        function setStatus(provider, text, className = '') {
-            const status = document.getElementById(`status-${provider}`);
+        function setStatus(panelKey, text, className = '') {
+            const status = document.getElementById(`status-${panelKey}`);
+            if (!status) return;
             status.textContent = text;
             status.className = 'ai-status ' + className;
         }
 
-        function setTyping(provider, active) {
-            const indicator = document.getElementById(`typing-${provider}`);
+        function setTyping(panelKey, active) {
+            const indicator = document.getElementById(`typing-${panelKey}`);
+            if (!indicator) return;
             indicator.classList.toggle('active', active);
         }
 
+        function setStats(panelKey, elapsed, usage) {
+            const timeEl = document.getElementById(`time-${panelKey}`);
+            const tokensEl = document.getElementById(`tokens-${panelKey}`);
+            if (timeEl) timeEl.textContent = elapsed.toFixed(2) + 's';
+            if (tokensEl && usage) {
+                tokensEl.textContent = `${usage.prompt_tokens || 0}+${usage.completion_tokens || 0}=${usage.total_tokens || 0}`;
+            }
+        }
+
         function setLoading(loading) {
-            sendBtn.disabled = loading;
-            promptInput.disabled = loading;
+            const sendBtn = document.getElementById('send-btn');
+            const promptInput = document.getElementById('prompt-input');
+            if (sendBtn) sendBtn.disabled = loading;
+            if (promptInput) promptInput.disabled = loading;
         }
 
         async function sendMessage() {
-            const prompt = promptInput.value.trim();
+            const promptInput = document.getElementById('prompt-input');
+            const prompt = promptInput ? promptInput.value.trim() : '';
+
             if (!prompt) return;
+            if (Object.keys(selectedProviders).length === 0) {
+                alert('请至少选择一个 LLM 提供商');
+                return;
+            }
 
             setLoading(true);
 
             // Add user message to all panels
-            providers.forEach(p => addMessage(p, prompt, 'user'));
-
-            // Show typing indicators
-            providers.forEach(p => {
-                setTyping(p, true);
-                setStatus(p, '思考中...', 'loading');
-            });
+            for (const key of Object.keys(selectedProviders)) {
+                addMessage(key, prompt, 'user');
+                setTyping(key, true);
+                setStatus(key, '思考中...', 'loading');
+            }
 
             try {
                 const response = await fetch('/api/counselor/', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ prompt })
+                    body: JSON.stringify({
+                        prompt,
+                        providers: Object.values(selectedProviders)
+                    })
                 });
+
+                if (!response.ok) {
+                    throw new Error('Request failed');
+                }
 
                 const data = await response.json();
 
@@ -359,41 +831,45 @@
                     throw new Error(data.error);
                 }
 
-                // Display responses
-                const responses = data.responses;
-                providers.forEach(provider => {
-                    setTyping(provider, false);
-                    const result = responses[provider];
+                const responses = data.responses || {};
+
+                // Update each panel with results
+                for (const [key, result] of Object.entries(responses)) {
+                    setTyping(key, false);
+
                     if (result.error) {
-                        addMessage(provider, `错误: ${result.error}`, 'error');
-                        setStatus(provider, '响应失败', 'error');
+                        addMessage(key, `错误: ${result.error}`, 'error');
+                        setStatus(key, '响应失败', 'error');
                     } else {
-                        addMessage(provider, result.response);
-                        setStatus(provider, '已回复');
+                        addMessage(key, result.response);
+                        setStatus(key, '已回复');
+                        setStats(key, result.elapsed_seconds || 0, result.usage);
+                        // Update model display
+                        const modelDisplay = document.getElementById(`model-display-${key}`);
+                        if (modelDisplay && result.model) {
+                            modelDisplay.textContent = result.model;
+                        }
                     }
-                });
+                }
 
             } catch (error) {
                 console.error('Chat error:', error);
-                providers.forEach(p => {
-                    setTyping(p, false);
-                    addMessage(p, `请求失败: ${error.message}`, 'error');
-                    setStatus(p, '请求失败', 'error');
-                });
+                for (const key of Object.keys(selectedProviders)) {
+                    setTyping(key, false);
+                    addMessage(key, `请求失败: ${error.message}`, 'error');
+                    setStatus(key, '请求失败', 'error');
+                }
             } finally {
                 setLoading(false);
-                promptInput.value = '';
-                promptInput.focus();
+                if (promptInput) {
+                    promptInput.value = '';
+                    promptInput.focus();
+                }
             }
         }
 
-        sendBtn.addEventListener('click', sendMessage);
-        promptInput.addEventListener('keydown', (e) => {
-            if (e.key === 'Enter' && !e.shiftKey) {
-                e.preventDefault();
-                sendMessage();
-            }
-        });
+        // Initialize on load
+        init();
     </script>
 </body>
 </html>

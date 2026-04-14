@@ -465,6 +465,8 @@
         try {
             loadingProgress.textContent = `正在配置 ${characters.length} 个角色...`;
 
+            console.log('[DEBUG] Sending configure request with:', { topic, characters });
+
             const response = await fetch('/roundtable/api/configure/', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
@@ -473,16 +475,24 @@
 
             const data = await response.json();
 
+            console.log('[DEBUG] Configure response:', data);
+
             if (data.error) {
                 throw new Error(data.error);
+            }
+
+            if (!data.characters || data.characters.length === 0) {
+                throw new Error('角色配置返回空数据，请重试');
             }
 
             const elapsed = ((Date.now() - configureStartTime) / 1000).toFixed(2);
             timingDisplay.textContent = `配置耗时: ${elapsed}秒`;
 
             configuredCharacters = data.characters;
+            console.log('[DEBUG] configuredCharacters set to:', configuredCharacters);
             displayCharacters(configuredCharacters);
         } catch (error) {
+            console.error('[DEBUG] Configure error:', error);
             errorMessage.textContent = error.message || '配置失败，请稍后再试';
             errorMessage.classList.add('active');
         } finally {
@@ -492,9 +502,25 @@
     });
 
     function displayCharacters(chars) {
+        console.log('[DEBUG] displayCharacters called with:', chars);
+
+        if (!chars || !Array.isArray(chars)) {
+            console.error('[DEBUG] Invalid chars data:', chars);
+            errorMessage.textContent = '角色数据格式错误，请刷新页面重试';
+            errorMessage.classList.add('active');
+            return;
+        }
+
+        if (chars.length === 0) {
+            console.error('[DEBUG] No characters to display');
+            errorMessage.textContent = '没有配置好的角色，请重试';
+            errorMessage.classList.add('active');
+            return;
+        }
+
         // 计算缓存命中统计
-        const hitCount = chars.filter(c => c._cached).length;
-        const missCount = chars.filter(c => !c._cached).length;
+        const hitCount = chars.filter(c => c && c._cached).length;
+        const missCount = chars.filter(c => c && !c._cached).length;
 
         // 显示缓存统计
         if (hitCount > 0 || missCount > 0) {
@@ -596,8 +622,11 @@
             </div>
         `).join('');
 
+        console.log('[DEBUG] Characters HTML rendered, showing section');
         charactersSection.classList.add('active');
         btnStart.classList.add('active');
+        console.log('[DEBUG] charactersSection active:', charactersSection.classList.contains('active'));
+        console.log('[DEBUG] btnStart active:', btnStart.classList.contains('active'));
     }
 
     function toggleCard(idx) {
@@ -606,21 +635,63 @@
     }
 
     btnStart.addEventListener('click', async () => {
+        console.log('[DEBUG] Start discussion clicked');
+        console.log('[DEBUG] configuredCharacters:', configuredCharacters);
+        console.log('[DEBUG] configuredCharacters length:', configuredCharacters ? configuredCharacters.length : 0);
+
+        // Validate we have characters
+        if (!configuredCharacters || configuredCharacters.length === 0) {
+            alert('错误: 没有配置好的角色，请先配置角色');
+            return;
+        }
+
+        if (configuredCharacters.length < 3) {
+            alert(`错误: 至少需要3个角色，当前只有 ${configuredCharacters.length} 个`);
+            return;
+        }
+
         btnStart.disabled = true;
         btnStart.textContent = '正在创建讨论...';
 
+        // 添加超时控制器
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => {
+            controller.abort();
+            console.error('[DEBUG] Request timeout after 90 seconds');
+        }, 90000);  // 90 秒超时
+
         try {
+            const requestData = {
+                topic: topic,
+                characters: configuredCharacters,
+                user_role: userRole
+            };
+            console.log('[DEBUG] Sending start request with:', requestData);
+
             const response = await fetch('/roundtable/api/start/', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    topic: topic,
-                    characters: configuredCharacters,
-                    user_role: userRole
-                })
+                body: JSON.stringify(requestData),
+                signal: controller.signal
             });
 
+            clearTimeout(timeoutId);
+
+            // 检查 HTTP 响应状态
+            if (!response.ok) {
+                const errorText = await response.text();
+                let errorMsg = `服务器错误 (${response.status})`;
+                try {
+                    const errorJson = JSON.parse(errorText);
+                    errorMsg = errorJson.error || errorMsg;
+                } catch (e) {
+                    console.error('[DEBUG] Failed to parse error response:', errorText);
+                }
+                throw new Error(errorMsg);
+            }
+
             const data = await response.json();
+            console.log('[DEBUG] Start response:', data);
 
             if (data.error) {
                 throw new Error(data.error);
@@ -630,7 +701,18 @@
             window.location.href = `/roundtable/d/${data.discussion_id}/?role=${userRole}`;
 
         } catch (error) {
-            alert('创建讨论失败: ' + error.message);
+            clearTimeout(timeoutId);
+            console.error('[DEBUG] Start discussion error:', error);
+
+            // 区分不同类型的错误
+            if (error.name === 'AbortError') {
+                alert('创建讨论超时，请检查网络连接或稍后重试');
+            } else if (error.message.includes('Failed to fetch')) {
+                alert('无法连接到服务器，请确认服务器正在运行 (端口 8002)');
+            } else {
+                alert('创建讨论失败: ' + error.message);
+            }
+
             btnStart.disabled = false;
             btnStart.textContent = '开始讨论';
         }

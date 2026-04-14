@@ -8,4 +8,5 @@ urlpatterns = [
     path('', views.HomeView.as_view(), name='home'),
     path('counselor/', views.ChatView.as_view(), name='counselor'),
     path('api/counselor/', views.ChatAPIView.as_view(), name='counselor_api'),
+    path('api/models/', views.ModelsAPIView.as_view(), name='models_api'),
 ]

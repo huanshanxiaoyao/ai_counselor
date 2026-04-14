@@ -4,7 +4,14 @@ Django settings for AI Counselor project.
 import os
 from pathlib import Path
 
+# Load .env file for development
+from dotenv import load_dotenv
+load_dotenv()
+
 BASE_DIR = Path(__file__).resolve().parent.parent.parent
+
+# SECURITY WARNING: don't run with debug turned on in production!
+DEBUG = os.getenv('DEBUG', 'True').lower() in ('true', '1', 'yes')
 
 # SECURITY WARNING: keep the secret key used in production secret!
 # In production, DJANGO_SECRET_KEY environment variable MUST be set.
@@ -17,9 +24,6 @@ else:
     SECRET_KEY = os.environ.get('DJANGO_SECRET_KEY')
     if not SECRET_KEY:
         raise RuntimeError("DJANGO_SECRET_KEY environment variable must be set in production")
-
-# SECURITY WARNING: don't run with debug turned on in production!
-DEBUG = os.getenv('DEBUG', 'True').lower() == 'true'
 
 # SECURITY WARNING: configure allowed hosts properly!
 ALLOWED_HOSTS = os.getenv('ALLOWED_HOSTS', 'localhost,127.0.0.1').split(',')
@@ -58,14 +62,25 @@ WSGI_APPLICATION = 'backend.config.wsgi.application'
 ASGI_APPLICATION = 'backend.config.asgi.application'
 
 # Channel Layers for WebSocket
-CHANNEL_LAYERS = {
-    'default': {
-        'BACKEND': 'channels_redis.core.RedisChannelLayer',
-        'CONFIG': {
-            'hosts': [(os.getenv('REDIS_HOST', 'localhost'), int(os.getenv('REDIS_PORT', '6379')))],
+# Use InMemoryChannelLayer if Redis is not available
+try:
+    import redis
+    r = redis.Redis(host='localhost', port=6379, socket_connect_timeout=1)
+    r.ping()
+    CHANNEL_LAYERS = {
+        'default': {
+            'BACKEND': 'channels_redis.core.RedisChannelLayer',
+            'CONFIG': {
+                'hosts': [('localhost', 6379)],
+            },
         },
-    },
-}
+    }
+except Exception:
+    CHANNEL_LAYERS = {
+        'default': {
+            'BACKEND': 'channels.layers.InMemoryChannelLayer',
+        },
+    }
 
 import dj_database_url
 

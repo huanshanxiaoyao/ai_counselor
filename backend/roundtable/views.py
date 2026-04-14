@@ -193,15 +193,35 @@ class ConfigureView(View):
 
             # 使用线程池并行处理所有角色
             configured_characters = []
+            errors = []
             with ThreadPoolExecutor(max_workers=5) as executor:
                 futures = {executor.submit(configure_single, char): char for char in characters}
                 for future in as_completed(futures):
+                    char = futures[future]
                     try:
                         result = future.result()
                         if result:
                             configured_characters.append(result)
+                        else:
+                            errors.append(f"角色 {char.get('name', '未知')} 配置返回空结果")
                     except Exception as e:
-                        logger.exception(f"Error configuring character")
+                        logger.exception(f"Error configuring character {char.get('name', 'unknown')}")
+                        errors.append(f"角色 {char.get('name', '未知')} 配置失败: {str(e)}")
+
+            # 验证配置结果
+            if len(configured_characters) < 3:
+                logger.error(f"Failed to configure enough characters: got {len(configured_characters)}, need 3+")
+                logger.error(f"Errors: {errors}")
+                if len(configured_characters) == 0:
+                    return JsonResponse({
+                        'error': '所有角色配置失败，请稍后重试。错误详情: ' + '; '.join(errors[:3])
+                    }, status=500)
+                else:
+                    return JsonResponse({
+                        'error': f'只成功配置了 {len(configured_characters)} 个角色，至少需要3个。请重试。'
+                    }, status=500)
+
+            logger.info(f"Successfully configured {len(configured_characters)} characters")
 
             return JsonResponse({
                 'topic': topic,
@@ -274,6 +294,11 @@ class DiscussionStartView(View):
 
     def post(self, request):
         """创建讨论并生成开场"""
+        # 验证 Content-Type
+        content_type = request.headers.get('Content-Type', '')
+        if 'application/json' not in content_type:
+            return JsonResponse({'error': 'Content-Type must be application/json'}, status=400)
+
         try:
             data = json.loads(request.body)
             topic = data.get('topic', '').strip()
@@ -312,6 +337,7 @@ class DiscussionStartView(View):
                 character_objs.append(char_obj)
 
             # 生成开场白
+            logger.info(f"[Discussion {discussion.id}] Generating opening for topic: {topic}")
             moderator = ModeratorAgent()
             characters_for_opening = [
                 {
@@ -322,11 +348,19 @@ class DiscussionStartView(View):
                 for c in character_objs
             ]
 
-            opening = moderator.generate_opening(
-                topic=topic,
-                characters=characters_for_opening,
-                user_role=user_role,
-            )
+            try:
+                opening = moderator.generate_opening(
+                    topic=topic,
+                    characters=characters_for_opening,
+                    user_role=user_role,
+                )
+                logger.info(f"[Discussion {discussion.id}] Opening generated successfully")
+            except Exception as e:
+                logger.error(f"[Discussion {discussion.id}] Failed to generate opening: {e}")
+                # 如果开场白生成失败，使用默认开场白
+                char_names = ', '.join([c.name for c in character_objs[:3]])
+                opening = f'欢迎大家参与今天的讨论。今天我们邀请到了{char_names}等嘉宾，共同探讨"{topic}"这个话题。让我们开始吧！'
+                logger.info(f"[Discussion {discussion.id}] Using fallback opening")
 
             # 保存开场消息
             Message.objects.create(
@@ -336,18 +370,17 @@ class DiscussionStartView(View):
                 is_moderator=True,
             )
 
-            # 解析开场白中的 @ 提及并触发角色响应
+            # 解析开场白中的 @ 提并触发角色响应
             mentioned_names = parse_mentions(opening)
             initial_responses = []
 
             # 获取对话历史（此时只有开场白）
             history = f"主持人：{opening}"
 
-            for name in mentioned_names:
-                # 查找对应的角色
-                char_obj = next((c for c in character_objs if c.name == name), None)
-                if char_obj:
-                    # 生成角色发言
+            # 使用线程池并行生成角色响应
+            def generate_character_response(char_obj, current_history):
+                """为单个角色生成响应"""
+                try:
                     character_agent = CharacterAgent()
                     speech = character_agent.generate_speech(
                         character_config={
@@ -360,36 +393,49 @@ class DiscussionStartView(View):
                             'viewpoints': char_obj.viewpoints,
                         },
                         topic=topic,
-                        conversation_history=history,
+                        conversation_history=current_history,
                         character_limit=200,
                     )
+                    return {'char_obj': char_obj, 'speech': speech, 'success': True}
+                except Exception as e:
+                    logger.error(f"[Discussion {discussion.id}] Failed to generate speech for {char_obj.name}: {e}")
+                    return {'char_obj': char_obj, 'speech': None, 'success': False, 'error': str(e)}
 
-                    # 保存角色消息
-                    msg = Message.objects.create(
-                        discussion=discussion,
-                        character=char_obj,
-                        content=speech,
-                        word_count=len(speech),
-                        is_moderator=False,
-                    )
-
-                    char_obj.message_count += 1
-                    char_obj.save()
-
-                    initial_responses.append({
-                        'id': msg.id,
-                        'speaker': char_obj.name,
-                        'content': speech,
-                        'is_moderator': False,
-                        'is_user': False,
-                    })
-
-                    # 更新历史
-                    history += f"\n{char_obj.name}：{speech}"
+            # 并行生成最多前2个被提及角色的响应（减少等待时间）
+            mentioned_chars = [c for c in character_objs if c.name in mentioned_names[:2]]
+            if mentioned_chars:
+                logger.info(f"[Discussion {discussion.id}] Generating responses for {len(mentioned_chars)} mentioned characters")
+                with ThreadPoolExecutor(max_workers=min(len(mentioned_chars), 2)) as executor:
+                    futures = {executor.submit(generate_character_response, char, history): char for char in mentioned_chars}
+                    for future in as_completed(futures, timeout=60):
+                        result = future.result()
+                        if result['success'] and result['speech']:
+                            char_obj = result['char_obj']
+                            speech = result['speech']
+                            # 保存角色消息
+                            msg = Message.objects.create(
+                                discussion=discussion,
+                                character=char_obj,
+                                content=speech,
+                                word_count=len(speech),
+                                is_moderator=False,
+                            )
+                            char_obj.message_count += 1
+                            char_obj.save()
+                            initial_responses.append({
+                                'id': msg.id,
+                                'speaker': char_obj.name,
+                                'content': speech,
+                                'is_moderator': False,
+                                'is_user': False,
+                            })
+                            # 更新历史
+                            history += f"\n{char_obj.name}：{speech}"
 
             discussion.current_round = 1
             discussion.current_speaker = mentioned_names[-1] if mentioned_names else ''
             discussion.save()
+            logger.info(f"[Discussion {discussion.id}] Created successfully with {len(initial_responses)} initial responses")
 
             # 启动后台任务：自动继续邀请角色发言
             import threading

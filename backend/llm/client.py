@@ -4,6 +4,7 @@ Unified LLM Client supporting multiple providers.
 import os
 import time
 import logging
+from dataclasses import dataclass, field
 from typing import Optional, Any
 
 import openai
@@ -19,6 +20,31 @@ from .exceptions import (
 from anthropic.types import TextBlock, ThinkingBlock
 
 logger = logging.getLogger(__name__)
+
+
+@dataclass
+class TokenUsage:
+    """Token usage information for a single LLM call."""
+    prompt_tokens: int = 0
+    completion_tokens: int = 0
+    total_tokens: int = 0
+
+    def __add__(self, other: "TokenUsage") -> "TokenUsage":
+        return TokenUsage(
+            prompt_tokens=self.prompt_tokens + other.prompt_tokens,
+            completion_tokens=self.completion_tokens + other.completion_tokens,
+            total_tokens=self.total_tokens + other.total_tokens,
+        )
+
+
+@dataclass
+class CompletionResult:
+    """Result of an LLM completion call, including metadata."""
+    text: str = ""
+    model: str = ""
+    usage: TokenUsage = field(default_factory=TokenUsage)
+    provider_name: str = ""
+    elapsed_seconds: float = 0.0
 
 
 class LLMClient:
@@ -74,32 +100,66 @@ class LLMClient:
         """
         Generate a completion from the LLM.
 
-        Args:
-            prompt: The user prompt
-            system_prompt: Optional system prompt
-            model: Override the default model
-            json_mode: Whether to response in JSON format
-            thinking: Enable thinking/reasoning (if supported)
-            **kwargs: Additional provider-specific arguments
-
         Returns:
             The LLM response text
         """
+        result = self.complete_with_metadata(
+            prompt=prompt,
+            system_prompt=system_prompt,
+            model=model,
+            json_mode=json_mode,
+            thinking=thinking,
+            **kwargs,
+        )
+        return result.text
+
+    def complete_with_metadata(
+        self,
+        prompt: str,
+        system_prompt: str = None,
+        model: str = None,
+        json_mode: bool = False,
+        thinking: bool = False,
+        **kwargs,
+    ) -> CompletionResult:
+        """
+        Generate a completion from the LLM, returning full metadata including token usage.
+
+        Returns:
+            CompletionResult with text, usage, model info, etc.
+        """
+        resolved_model = model or self.provider.default_model
         for attempt in range(self.max_retries):
             try:
-                return self._client.complete(
+                start_time = time.time()
+                usage, text, resp_model = self._client.complete_with_usage(
                     prompt=prompt,
                     system_prompt=system_prompt,
-                    model=model or self.provider.default_model,
+                    model=resolved_model,
                     json_mode=json_mode,
                     thinking=thinking,
                     **kwargs,
                 )
+                elapsed = time.time() - start_time
+
+                result = CompletionResult(
+                    text=text,
+                    model=resp_model or resolved_model,
+                    usage=usage,
+                    provider_name=self.provider.name,
+                    elapsed_seconds=round(elapsed, 3),
+                )
+                logger.info(
+                    f"LLM call: provider={self.provider.name} model={result.model} "
+                    f"tokens={usage.total_tokens} ({usage.prompt_tokens}+{usage.completion_tokens}) "
+                    f"time={result.elapsed_seconds}s"
+                )
+                return result
             except LLMTimeoutError:
                 if attempt == self.max_retries - 1:
                     raise
                 logger.warning(f"LLM timeout, retrying ({attempt + 1}/{self.max_retries})")
-                time.sleep(2 ** attempt)  # Exponential backoff
+                time.sleep(2 ** attempt)
             except LLMAPIError as e:
                 if attempt == self.max_retries - 1:
                     raise
@@ -119,7 +179,7 @@ class OpenAIBackend:
             timeout=timeout,
         )
 
-    def complete(
+    def complete_with_usage(
         self,
         prompt: str,
         system_prompt: str = None,
@@ -127,7 +187,8 @@ class OpenAIBackend:
         json_mode: bool = False,
         thinking: bool = False,
         **kwargs,
-    ) -> str:
+    ) -> tuple[TokenUsage, str, str]:
+        """Complete request and return usage, text, and model name."""
         messages = []
         if system_prompt:
             messages.append({"role": "system", "content": system_prompt})
@@ -141,7 +202,13 @@ class OpenAIBackend:
             response_format=response_format,
             **kwargs,
         )
-        return response.choices[0].message.content
+
+        usage = TokenUsage(
+            prompt_tokens=response.usage.prompt_tokens,
+            completion_tokens=response.usage.completion_tokens,
+            total_tokens=response.usage.total_tokens,
+        )
+        return usage, response.choices[0].message.content, response.model
 
 
 class AnthropicBackend:
@@ -156,7 +223,7 @@ class AnthropicBackend:
             timeout=timeout,
         )
 
-    def complete(
+    def complete_with_usage(
         self,
         prompt: str,
         system_prompt: str = None,
@@ -164,13 +231,15 @@ class AnthropicBackend:
         json_mode: bool = False,
         thinking: bool = False,
         **kwargs,
-    ) -> str:
+    ) -> tuple[TokenUsage, str, str]:
+        """Complete request and return usage, text, and model name."""
         params = {
             "model": model or self.provider.default_model,
             "messages": [{"role": "user", "content": prompt}],
             "max_tokens": 4096,
-            "thinking": {"type": "enabled"} if thinking else None,
         }
+        if thinking:
+            params["thinking"] = {"type": "enabled"}
         if system_prompt:
             params["system"] = system_prompt
 
@@ -181,6 +250,10 @@ class AnthropicBackend:
         for block in response.content:
             if isinstance(block, TextBlock):
                 text_parts.append(block.text)
-            # Ignore ThinkingBlocks as they're just internal reasoning
 
-        return "\n".join(text_parts) if text_parts else ""
+        usage = TokenUsage(
+            prompt_tokens=response.usage.input_tokens,
+            completion_tokens=response.usage.output_tokens,
+            total_tokens=response.usage.input_tokens + response.usage.output_tokens,
+        )
+        return usage, "\n".join(text_parts) if text_parts else "", response.model

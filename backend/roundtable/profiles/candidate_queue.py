@@ -2,17 +2,16 @@
 候选队列管理器
 用于跟踪被推荐但没有离线基础设定的角色
 当推荐次数达到阈值时，自动触发生成离线基础设定
+
+优先使用 Redis，当 Redis 不可用时降级到内存存储
 """
 import json
 import logging
 import os
 import threading
-from collections import OrderedDict
 from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Dict, List, Optional
-
-import redis
 
 logger = logging.getLogger(__name__)
 
@@ -53,26 +52,217 @@ class CandidateEntry:
         return entry
 
 
+class BaseCandidateStore:
+    """候选存储基类"""
+
+    def add_candidate(self, name: str, era: str = '') -> CandidateEntry:
+        raise NotImplementedError()
+
+    def get_candidate(self, name: str) -> Optional[CandidateEntry]:
+        raise NotImplementedError()
+
+    def get_all_candidates(self) -> List[CandidateEntry]:
+        raise NotImplementedError()
+
+    def remove_candidate(self, name: str) -> bool:
+        raise NotImplementedError()
+
+    def reset_count(self, name: str) -> Optional[CandidateEntry]:
+        raise NotImplementedError()
+
+    def clear(self):
+        raise NotImplementedError()
+
+    def update_status(self, name: str, status: str, profile_path: str = None):
+        raise NotImplementedError()
+
+
+class InMemoryCandidateStore(BaseCandidateStore):
+    """内存候选存储实现"""
+
+    def __init__(self):
+        self._data: Dict[str, CandidateEntry] = {}
+        self._lock = threading.Lock()
+
+    def add_candidate(self, name: str, era: str = '') -> CandidateEntry:
+        with self._lock:
+            if name in self._data:
+                entry = self._data[name]
+                entry.recommend_count += 1
+                entry.updated_at = datetime.now()
+            else:
+                entry = CandidateEntry(name=name, era=era, recommend_count=1)
+                self._data[name] = entry
+            logger.info(f"[InMemory] Added candidate: {name}, count: {entry.recommend_count}")
+            return entry
+
+    def get_candidate(self, name: str) -> Optional[CandidateEntry]:
+        with self._lock:
+            return self._data.get(name)
+
+    def get_all_candidates(self) -> List[CandidateEntry]:
+        with self._lock:
+            return list(self._data.values())
+
+    def remove_candidate(self, name: str) -> bool:
+        with self._lock:
+            if name in self._data:
+                del self._data[name]
+                return True
+            return False
+
+    def reset_count(self, name: str) -> Optional[CandidateEntry]:
+        with self._lock:
+            entry = self._data.get(name)
+            if entry:
+                entry.recommend_count = 0
+                entry.status = 'pending'
+                entry.updated_at = datetime.now()
+            return entry
+
+    def clear(self):
+        with self._lock:
+            self._data.clear()
+
+    def update_status(self, name: str, status: str, profile_path: str = None):
+        with self._lock:
+            entry = self._data.get(name)
+            if entry:
+                entry.status = status
+                entry.updated_at = datetime.now()
+                if profile_path:
+                    entry.generated_profile_path = profile_path
+
+
+class RedisCandidateStore(BaseCandidateStore):
+    """Redis 候选存储实现"""
+
+    QUEUE_KEY = "roundtable:candidate_queue"
+
+    def __init__(self):
+        redis_host = os.getenv('REDIS_HOST', 'localhost')
+        redis_port = int(os.getenv('REDIS_PORT', '6379'))
+
+        import redis
+        self._redis = redis.Redis(
+            host=redis_host,
+            port=redis_port,
+            db=0,
+            decode_responses=True,
+            socket_connect_timeout=2,
+            socket_timeout=5
+        )
+        self._lock = threading.Lock()
+        self._redis_available = True
+
+        # 测试连接
+        try:
+            self._redis.ping()
+            logger.info(f"[Redis] CandidateStore initialized at {redis_host}:{redis_port}")
+        except Exception as e:
+            logger.warning(f"[Redis] CandidateStore Redis ping failed: {e}")
+            self._redis_available = False
+
+    def _safe_redis_op(self, operation, *args, **kwargs):
+        """安全的 Redis 操作封装，失败时返回 None"""
+        if not self._redis_available:
+            return None
+        try:
+            return operation(*args, **kwargs)
+        except Exception as e:
+            logger.warning(f"[Redis] Operation failed: {e}")
+            self._redis_available = False
+            return None
+
+    def add_candidate(self, name: str, era: str = '') -> CandidateEntry:
+        key = f"{name}"
+        with self._lock:
+            existing = self._safe_redis_op(self._redis.hget, self.QUEUE_KEY, key)
+            if existing:
+                try:
+                    entry_data = json.loads(existing)
+                    entry = CandidateEntry.from_dict(entry_data)
+                    entry.recommend_count += 1
+                    entry.updated_at = datetime.now()
+                except Exception:
+                    entry = CandidateEntry(name=name, era=era, recommend_count=1)
+            else:
+                entry = CandidateEntry(name=name, era=era, recommend_count=1)
+
+            # 尝试保存到 Redis
+            self._safe_redis_op(
+                self._redis.hset,
+                self.QUEUE_KEY,
+                key,
+                json.dumps(entry.to_dict(), ensure_ascii=False)
+            )
+            logger.info(f"[Redis] Added candidate: {name}, count: {entry.recommend_count}")
+            return entry
+
+    def get_candidate(self, name: str) -> Optional[CandidateEntry]:
+        data = self._safe_redis_op(self._redis.hget, self.QUEUE_KEY, name)
+        if data:
+            try:
+                return CandidateEntry.from_dict(json.loads(data))
+            except Exception as e:
+                logger.error(f"[Redis] Failed to parse candidate {name}: {e}")
+        return None
+
+    def get_all_candidates(self) -> List[CandidateEntry]:
+        all_data = self._safe_redis_op(self._redis.hgetall, self.QUEUE_KEY) or {}
+        candidates = []
+        for name, data in all_data.items():
+            try:
+                candidates.append(CandidateEntry.from_dict(json.loads(data)))
+            except Exception as e:
+                logger.error(f"[Redis] Failed to parse candidate {name}: {e}")
+        return candidates
+
+    def remove_candidate(self, name: str) -> bool:
+        result = self._safe_redis_op(self._redis.hdel, self.QUEUE_KEY, name)
+        return result is not None and result > 0
+
+    def reset_count(self, name: str) -> Optional[CandidateEntry]:
+        entry = self.get_candidate(name)
+        if entry:
+            entry.recommend_count = 0
+            entry.status = 'pending'
+            entry.updated_at = datetime.now()
+            self._safe_redis_op(
+                self._redis.hset,
+                self.QUEUE_KEY,
+                name,
+                json.dumps(entry.to_dict(), ensure_ascii=False)
+            )
+        return entry
+
+    def clear(self):
+        self._safe_redis_op(self._redis.delete, self.QUEUE_KEY)
+
+    def update_status(self, name: str, status: str, profile_path: str = None):
+        entry = self.get_candidate(name)
+        if entry:
+            entry.status = status
+            entry.updated_at = datetime.now()
+            if profile_path:
+                entry.generated_profile_path = profile_path
+            self._safe_redis_op(
+                self._redis.hset,
+                self.QUEUE_KEY,
+                name,
+                json.dumps(entry.to_dict(), ensure_ascii=False)
+            )
+
+
 class CandidateQueue:
     """
-    候选队列管理器
+    候选队列管理器 - 带有 Redis 降级功能
 
-    使用 Redis Hash 存储：
-    - key: "roundtable:candidate_queue"
-    - field: 角色名
-    - value: JSON序列化的 CandidateEntry
-
-    特性：
-    - 自动触发：当 recommend_count >= trigger_threshold 时触发生成任务
-    - 线程安全
-    - 后台线程执行生成任务
+    优先使用 Redis，当 Redis 不可用时自动降级到内存存储
     """
 
     _instance: Optional['CandidateQueue'] = None
     _lock = threading.Lock()
-
-    # Redis key
-    QUEUE_KEY = "roundtable:candidate_queue"
 
     def __new__(cls, trigger_threshold: int = 2):
         if cls._instance is None:
@@ -88,15 +278,15 @@ class CandidateQueue:
         self._initialized = True
         self._trigger_threshold = trigger_threshold
 
-        # Redis connection - use REDIS_HOST env var (default to localhost for local dev)
-        redis_host = os.getenv('REDIS_HOST', 'localhost')
-        redis_port = int(os.getenv('REDIS_PORT', '6379'))
-        self._redis = redis.Redis(
-            host=redis_host,
-            port=redis_port,
-            db=0,
-            decode_responses=True
-        )
+        # 尝试使用 Redis，失败则降级到内存存储
+        self._store: BaseCandidateStore
+        try:
+            self._store = RedisCandidateStore()
+            logger.info("CandidateQueue using Redis backend")
+        except Exception as e:
+            logger.warning(f"Redis not available for CandidateQueue, falling back to in-memory: {e}")
+            self._store = InMemoryCandidateStore()
+            logger.info("CandidateQueue using in-memory backend")
 
         # Thread pool for background generation
         self._executor = None
@@ -111,60 +301,22 @@ class CandidateQueue:
         return self._executor
 
     def add_candidate(self, name: str, era: str = '') -> CandidateEntry:
-        """
-        添加候选角色
+        """添加候选角色"""
+        entry = self._store.add_candidate(name, era)
 
-        Args:
-            name: 角色名
-            era: 时代（可选）
+        # 检查是否达到触发阈值
+        if entry.recommend_count >= self._trigger_threshold and entry.status == 'pending':
+            self._trigger_generation(entry)
 
-        Returns:
-            更新后的 CandidateEntry
-        """
-        key = f"{name}"
-
-        with self._lock:
-            existing = self._redis.hget(self.QUEUE_KEY, key)
-
-            if existing:
-                entry_data = json.loads(existing)
-                entry = CandidateEntry.from_dict(entry_data)
-                entry.recommend_count += 1
-                entry.updated_at = datetime.now()
-            else:
-                entry = CandidateEntry(
-                    name=name,
-                    era=era,
-                    recommend_count=1,
-                )
-
-            # 保存回 Redis
-            self._redis.hset(self.QUEUE_KEY, key, json.dumps(entry.to_dict(), ensure_ascii=False))
-            logger.info(f"Added candidate: {name}, count: {entry.recommend_count}")
-
-            # 检查是否达到触发阈值
-            if entry.recommend_count >= self._trigger_threshold and entry.status == 'pending':
-                self._trigger_generation(entry)
-
-            return entry
+        return entry
 
     def get_candidate(self, name: str) -> Optional[CandidateEntry]:
         """获取指定候选角色"""
-        data = self._redis.hget(self.QUEUE_KEY, name)
-        if data:
-            return CandidateEntry.from_dict(json.loads(data))
-        return None
+        return self._store.get_candidate(name)
 
     def get_all_candidates(self) -> List[CandidateEntry]:
         """获取所有候选角色"""
-        all_data = self._redis.hgetall(self.QUEUE_KEY)
-        candidates = []
-        for name, data in all_data.items():
-            try:
-                candidates.append(CandidateEntry.from_dict(json.loads(data)))
-            except Exception as e:
-                logger.error(f"Failed to parse candidate {name}: {e}")
-        return candidates
+        return self._store.get_all_candidates()
 
     def get_pending_candidates(self) -> List[CandidateEntry]:
         """获取待处理的候选角色"""
@@ -183,32 +335,19 @@ class CandidateQueue:
 
     def remove_candidate(self, name: str) -> bool:
         """移除候选角色"""
-        result = self._redis.hdel(self.QUEUE_KEY, name)
-        return result > 0
+        return self._store.remove_candidate(name)
 
     def reset_count(self, name: str) -> Optional[CandidateEntry]:
         """重置推荐计数"""
-        entry = self.get_candidate(name)
-        if entry:
-            entry.recommend_count = 0
-            entry.status = 'pending'
-            entry.updated_at = datetime.now()
-            self._redis.hset(self.QUEUE_KEY, name, json.dumps(entry.to_dict(), ensure_ascii=False))
-        return entry
+        return self._store.reset_count(name)
 
     def clear(self):
         """清空所有候选"""
-        self._redis.delete(self.QUEUE_KEY)
+        self._store.clear()
 
     def update_status(self, name: str, status: str, profile_path: str = None):
         """更新候选状态"""
-        entry = self.get_candidate(name)
-        if entry:
-            entry.status = status
-            entry.updated_at = datetime.now()
-            if profile_path:
-                entry.generated_profile_path = profile_path
-            self._redis.hset(self.QUEUE_KEY, name, json.dumps(entry.to_dict(), ensure_ascii=False))
+        self._store.update_status(name, status, profile_path)
 
     def _trigger_generation(self, entry: CandidateEntry):
         """触发生成任务"""
