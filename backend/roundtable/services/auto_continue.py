@@ -133,9 +133,12 @@ class AutoContinueService:
         if char.message_count > 0:
             self._broadcast_debug(f"[初始化] {char.name} 已发言({char.message_count}次)，跳过")
             logger.info(f"[AutoContinue:{self.discussion_id}] {char.name} 已发言，跳过，进入下一轮")
-            # 直接进入下一轮，避免重复邀请
-            self._discussion.current_round += 1
-            self._discussion.save()
+            # 原子自增，避免与 Consumer 的并发写冲突
+            from django.db.models import F
+            Discussion.objects.filter(id=self.discussion_id).update(
+                current_round=F('current_round') + 1,
+            )
+            self._discussion.refresh_from_db()
             return
         history = self._get_conversation_history()
 
@@ -156,10 +159,13 @@ class AutoContinueService:
             is_moderator=True,
         )
 
-        # 更新状态
-        self._discussion.current_round += 1
-        self._discussion.current_speaker = char.name
-        self._discussion.save()
+        # 原子更新，避免与 Consumer 并发写冲突
+        from django.db.models import F
+        Discussion.objects.filter(id=self.discussion_id).update(
+            current_round=F('current_round') + 1,
+            current_speaker=char.name,
+        )
+        self._discussion.refresh_from_db()
 
         # 广播邀请消息
         self._broadcast({
@@ -228,10 +234,13 @@ class AutoContinueService:
             is_moderator=True,
         )
 
-        # 更新状态
-        self._discussion.current_round += 1
-        self._discussion.current_speaker = next_char_name
-        self._discussion.save()
+        # 原子更新，避免与 Consumer 并发写冲突
+        from django.db.models import F
+        Discussion.objects.filter(id=self.discussion_id).update(
+            current_round=F('current_round') + 1,
+            current_speaker=next_char_name,
+        )
+        self._discussion.refresh_from_db()
 
         # 广播邀请消息
         self._broadcast({
@@ -256,7 +265,7 @@ class AutoContinueService:
         from .character import CharacterAgent
 
         char.refresh_from_db()
-        character_agent = CharacterAgent()
+        character_agent = CharacterAgent(provider=char.llm_provider or None)
 
         speech = character_agent.generate_speech(
             character_config={
@@ -271,7 +280,15 @@ class AutoContinueService:
             topic=self._discussion.topic,
             conversation_history=history,
             character_limit=self._discussion.character_limit,
+            model=char.llm_model or None,
         )
+
+        # 累计 token 消耗到 Discussion
+        if character_agent.last_token_usage:
+            from django.db.models import F
+            Discussion.objects.filter(id=self.discussion_id).update(
+                total_tokens=F('total_tokens') + character_agent.last_token_usage.total_tokens
+            )
 
         # 保存角色发言
         msg = Message.objects.create(
@@ -282,8 +299,10 @@ class AutoContinueService:
             is_moderator=False,
         )
 
-        char.message_count += 1
-        char.save()
+        from django.db.models import F
+        Character.objects.filter(id=char.id).update(
+            message_count=F('message_count') + 1
+        )
 
         # 广播角色发言
         self._broadcast({
@@ -312,11 +331,9 @@ class AutoContinueService:
             channel_layer = get_channel_layer()
             room_group_name = f"discussion_{self.discussion_id}"
 
-            # Extract the message type from the message dict
-            message_type = message.pop('type', 'message')
-            # 提取 data 内容，避免双重嵌套（关键修复）
-            # 如果 message 有 'data' 键，提取其内容；否则使用整个 message
-            message_data = message.pop('data', message)
+            # Extract the message type from the message dict (read-only, do not mutate caller's dict)
+            message_type = message.get('type', 'message')
+            message_data = message.get('data', {k: v for k, v in message.items() if k != 'type'})
 
             async_to_sync(channel_layer.group_send)(
                 room_group_name,
@@ -413,6 +430,14 @@ class AutoContinueService:
             })
 
             self._broadcast_debug(f"[结束] 讨论已达到最大轮次，正常结束")
+
+            # 广播 Token 统计
+            try:
+                total = Discussion.objects.get(id=self.discussion_id).total_tokens
+                self._broadcast_debug(f"[Token 统计] 本次会话共消耗 {total} tokens")
+            except Exception:
+                pass
+
             logger.info(f"[AutoContinue:{self.discussion_id}] 已广播讨论结束")
 
         except Exception as e:

@@ -34,7 +34,7 @@ class Discussion(models.Model):
 
     # 配置
     character_limit = models.IntegerField(default=200)
-    max_rounds = models.IntegerField(default=100)
+    max_rounds = models.IntegerField(default=30)
     token_timeout_seconds = models.IntegerField(default=60)  # 令牌超时时间
 
     # 主持人令牌状态
@@ -52,6 +52,9 @@ class Discussion(models.Model):
     # 当前状态
     current_round = models.IntegerField(default=0)
     current_speaker = models.CharField(max_length=100, blank=True)
+
+    # Token 统计
+    total_tokens = models.IntegerField(default=0)  # 会话累计消耗 tokens
 
     # 元数据
     created_at = models.DateTimeField(auto_now_add=True)
@@ -93,12 +96,19 @@ class Character(models.Model):
     message_count = models.IntegerField(default=0)
     consecutive_mentions = models.IntegerField(default=0)  # 连续被@次数
 
+    # LLM 配置（为空则使用项目默认）
+    llm_provider = models.CharField(max_length=50, blank=True, null=True)
+    llm_model = models.CharField(max_length=100, blank=True, null=True)
+
     # 顺序
     speaking_order = models.IntegerField(default=0)
 
     class Meta:
         db_table = 'roundtable_characters'
         ordering = ['speaking_order']
+        constraints = [
+            models.UniqueConstraint(fields=['discussion', 'name'], name='unique_character_per_discussion')
+        ]
 
     def __str__(self):
         return f"{self.name}（{self.era}）"

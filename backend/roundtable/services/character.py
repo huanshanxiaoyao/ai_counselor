@@ -5,7 +5,7 @@ import json
 import logging
 from typing import Dict, List, Optional
 
-from backend.llm import LLMClient
+from backend.llm import LLMClient, TokenUsage
 from backend.roundtable.profiles import get_topic_cache, get_base_profile_loader
 
 logger = logging.getLogger(__name__)
@@ -18,6 +18,7 @@ class CharacterAgent:
         self.client = LLMClient(provider_name=provider)
         self._profile_loader = get_base_profile_loader()
         self._topic_cache = get_topic_cache()
+        self.last_token_usage: Optional[TokenUsage] = None
 
     def has_offline_profile(self, name: str) -> bool:
         """检查是否有离线基础设定"""
@@ -164,7 +165,8 @@ class CharacterAgent:
         character_config: Dict,
         topic: str,
         conversation_history: str = "",
-        character_limit: int = 200
+        character_limit: int = 200,
+        model: str = None,
     ) -> str:
         """
         生成角色发言
@@ -205,12 +207,14 @@ class CharacterAgent:
             character_limit=character_limit
         )
 
-        response = self.client.complete(
+        result = self.client.complete_with_metadata(
             prompt=prompt,
             system_prompt=system_prompt,
+            model=model,
         )
+        self.last_token_usage = result.usage
 
-        return response.strip()
+        return result.text.strip()
 
     def _get_speaking_system_prompt(
         self,
@@ -442,7 +446,7 @@ class CharacterAgent:
             articles_future = executor.submit(self._generate_representative_articles, name, era, topic)
 
             try:
-                vp_result = vp_future.result(timeout=30)
+                vp_result = vp_future.result(timeout=60)
                 if vp_result:
                     viewpoints = vp_result.get('viewpoints', {})
                     temporal_constraints = vp_result.get('temporal_constraints', {})
@@ -450,7 +454,7 @@ class CharacterAgent:
                 logger.error(f"Failed to generate viewpoints: {e}")
 
             try:
-                articles_result = articles_future.result(timeout=30)
+                articles_result = articles_future.result(timeout=60)
                 if articles_result:
                     articles = articles_result
             except Exception as e:

@@ -13,6 +13,7 @@ from .services.director import DirectorAgent
 from .services.character import CharacterAgent
 from .services.host_agent import HostAgent as ModeratorAgent
 from .models import Discussion, Character, Message
+from backend.llm.providers import get_all_providers
 
 logger = logging.getLogger(__name__)
 
@@ -72,10 +73,30 @@ class SetupView(View):
         if user_role not in valid_roles:
             user_role = 'participant'
 
+        # 构建可用模型列表供前端选择
+        providers = get_all_providers()
+        llm_options = []
+        for pname, pcfg in providers.items():
+            if pcfg.api_key:  # 只暴露已配置 API key 的 provider
+                for model in (pcfg.available_models or [pcfg.default_model]):
+                    llm_options.append({
+                        'value': f'{pname}:{model}',
+                        'label': f'{pname} · {model}',
+                        'provider': pname,
+                        'model': model,
+                    })
+
+        import os
+        default_provider = os.getenv('LLM_DEFAULT_PROVIDER', 'qwen')
+        default_cfg = providers.get(default_provider)
+        default_label = f'{default_provider} · {default_cfg.default_model}' if default_cfg else default_provider
+
         context = {
             'topic': topic,
             'characters_json': json.dumps(characters, ensure_ascii=False),
             'user_role': user_role,
+            'llm_options_json': json.dumps(llm_options, ensure_ascii=False),
+            'default_llm_label': default_label,
         }
         return render(request, 'roundtable/setup.html', context)
 
@@ -245,11 +266,7 @@ class DiscussionView(View):
             discussion = Discussion.objects.get(id=discussion_id)
             characters = discussion.characters.all()
 
-            # URL query param takes precedence, fallback to discussion.user_role
-            user_role = request.GET.get('role', discussion.user_role)
-            valid_roles = ['host', 'participant', 'observer']
-            if user_role not in valid_roles:
-                user_role = discussion.user_role
+            user_role = discussion.user_role
 
             context = {
                 'discussion_id': discussion.id,
@@ -304,6 +321,7 @@ class DiscussionStartView(View):
             topic = data.get('topic', '').strip()
             characters_data = data.get('characters', [])
             user_role = data.get('user_role', 'host')
+            max_rounds = max(5, min(200, int(data.get('max_rounds', 30))))
 
             if not topic:
                 return JsonResponse({'error': '话题不能为空'}, status=400)
@@ -316,6 +334,7 @@ class DiscussionStartView(View):
                 topic=topic,
                 user_role=user_role,
                 status='active',
+                max_rounds=max_rounds,
             )
 
             # 创建角色
@@ -333,6 +352,8 @@ class DiscussionStartView(View):
                     representative_articles=char_data.get('representative_articles', []),
                     temporal_constraints=char_data.get('temporal_constraints', {}),
                     speaking_order=i,
+                    llm_provider=char_data.get('llm_provider') or None,
+                    llm_model=char_data.get('llm_model') or None,
                 )
                 character_objs.append(char_obj)
 
@@ -1021,6 +1042,8 @@ class RestartApiView(View):
                     representative_articles=orig_char.representative_articles,
                     temporal_constraints=orig_char.temporal_constraints,
                     speaking_order=i,
+                    llm_provider=orig_char.llm_provider,
+                    llm_model=orig_char.llm_model,
                 )
 
             # 生成开场白

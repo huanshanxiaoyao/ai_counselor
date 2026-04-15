@@ -70,6 +70,9 @@ class DiscussionConsumer(AsyncWebsocketConsumer):
         self.discussion_id = self.scope['url_route']['kwargs']['discussion_id']
         self.room_group_name = f'discussion_{self.discussion_id}'
 
+        # Token 统计（本次 WS 连接期间的 LLM 消耗）
+        self.session_tokens = {'prompt': 0, 'completion': 0, 'total': 0}
+
         # Join room group
         await self.channel_layer.group_add(
             self.room_group_name,
@@ -336,6 +339,7 @@ class DiscussionConsumer(AsyncWebsocketConsumer):
                                      player_mentioned_character: str = None):
         """保存消息到数据库并广播"""
         from .models import Discussion, Message, Character
+        from django.db.models import F
 
         try:
             discussion = Discussion.objects.get(id=self.discussion_id)
@@ -349,7 +353,7 @@ class DiscussionConsumer(AsyncWebsocketConsumer):
                     pass
 
             # 保存消息
-            msg = Message.objects.create(
+            Message.objects.create(
                 discussion=discussion,
                 character=character,
                 content=content,
@@ -359,175 +363,192 @@ class DiscussionConsumer(AsyncWebsocketConsumer):
                 player_mentioned_character=player_mentioned_character,
             )
 
-            # 更新讨论状态
+            # 原子更新轮次状态（仅角色发言才增加轮次，避免覆盖并发的 token 等字段）
             if speaker != '主持人' and speaker != '你':
-                discussion.current_round += 1
-                discussion.current_speaker = speaker
-            discussion.save()
+                Discussion.objects.filter(id=self.discussion_id).update(
+                    current_round=F('current_round') + 1,
+                    current_speaker=speaker,
+                )
 
         except Exception as e:
             logger.error(f"Error saving message: {e}")
 
     @database_sync_to_async
-    def _get_character_response(self, character_name: str, context: str) -> dict:
-        """获取角色的回复"""
+    def _fetch_character_data(self, character_name: str) -> dict:
+        """
+        从数据库读取角色和讨论数据，返回纯 Python dict（不含 ORM 对象）。
+        只做 DB 查询，不调用 LLM，可安全放入数据库线程池。
+        """
         from .models import Discussion, Character
+
+        discussion = Discussion.objects.get(id=self.discussion_id)
+        char_obj = Character.objects.get(discussion=discussion, name=character_name)
+        history = self._get_conversation_history(discussion)
+        return {
+            'char_id': char_obj.id,
+            'char_name': char_obj.name,
+            'llm_provider': char_obj.llm_provider,
+            'llm_model': char_obj.llm_model,
+            'config': {
+                'name': char_obj.name,
+                'era': char_obj.era,
+                'bio': char_obj.bio,
+                'background': char_obj.background,
+                'language_style': char_obj.language_style,
+                'temporal_constraints': char_obj.temporal_constraints,
+                'viewpoints': char_obj.viewpoints,
+            },
+            'topic': discussion.topic,
+            'character_limit': discussion.character_limit,
+            'history': history,
+        }
+
+    @database_sync_to_async
+    def _save_character_message(self, char_id: int, speech: str,
+                                token_total: int, declined: bool = False):
+        """
+        保存角色消息并原子更新统计字段。
+        只做 DB 写入，可安全放入数据库线程池。
+        返回 (msg_id, char_name)。
+        """
+        from .models import Character, Message
+        from django.db.models import F
+
+        char_obj = Character.objects.get(id=char_id)
+        msg = Message.objects.create(
+            discussion_id=self.discussion_id,
+            character=char_obj,
+            content=speech,
+            word_count=len(speech),
+            is_moderator=False,
+            is_user=False,
+            read_but_no_reply=declined,
+        )
+        Character.objects.filter(id=char_id).update(
+            message_count=F('message_count') + 1
+        )
+        if token_total:
+            from .models import Discussion
+            Discussion.objects.filter(id=self.discussion_id).update(
+                total_tokens=F('total_tokens') + token_total
+            )
+        return msg.id, char_obj.name
+
+    async def _get_character_response(self, character_name: str, context: str) -> dict:
+        """
+        获取角色回复。
+
+        三段式结构，将 LLM 调用与 DB 操作完全分离：
+          1. _fetch_character_data  → 数据库线程池（快，纯 DB 读）
+          2. sync_to_async(llm_call) → 通用线程池（慢，网络 IO，不占 DB 槽）
+          3. _save_character_message → 数据库线程池（快，纯 DB 写）
+        """
+        from .models import Character
         from .services.character import CharacterAgent
 
         try:
-            discussion = Discussion.objects.get(id=self.discussion_id)
-            char_obj = Character.objects.get(discussion=discussion, name=character_name)
-
-            # 获取对话历史
-            history = self._get_conversation_history(discussion)
-
-            # 生成角色发言
-            character_agent = CharacterAgent()
-            speech = character_agent.generate_speech(
-                character_config={
-                    'name': char_obj.name,
-                    'era': char_obj.era,
-                    'bio': char_obj.bio,
-                    'background': char_obj.background,
-                    'language_style': char_obj.language_style,
-                    'temporal_constraints': char_obj.temporal_constraints,
-                    'viewpoints': char_obj.viewpoints,
-                },
-                topic=discussion.topic,
-                conversation_history=history,
-                character_limit=discussion.character_limit,
-            )
-
-            # 保存角色消息
-            msg = Message.objects.create(
-                discussion=discussion,
-                character=char_obj,
-                content=speech,
-                word_count=len(speech),
-                is_moderator=False,
-                is_user=False,
-            )
-
-            char_obj.message_count += 1
-            char_obj.save()
-
-            return {
-                'id': msg.id,
-                'speaker': char_obj.name,
-                'content': speech,
-                'is_moderator': False,
-                'is_user': False,
-            }
-
+            data = await self._fetch_character_data(character_name)
         except Character.DoesNotExist:
-            return {
-                'error': f'未找到角色：{character_name}'
-            }
+            return {'error': f'未找到角色：{character_name}'}
         except Exception as e:
-            logger.error(f"Error getting character response: {e}")
+            logger.error(f"Error fetching character data for {character_name}: {e}")
             return None
 
-    @database_sync_to_async
-    def _get_character_response_with_decline(self, character_name: str, player_message: str) -> tuple:
+        def _llm_call():
+            agent = CharacterAgent(provider=data['llm_provider'] or None)
+            speech = agent.generate_speech(
+                character_config=data['config'],
+                topic=data['topic'],
+                conversation_history=data['history'],
+                character_limit=data['character_limit'],
+                model=data['llm_model'] or None,
+            )
+            token_total = (
+                agent.last_token_usage.total_tokens
+                if agent.last_token_usage else 0
+            )
+            return speech, token_total
+
+        try:
+            speech, token_total = await sync_to_async(_llm_call)()
+        except Exception as e:
+            logger.error(f"Error generating speech for {character_name}: {e}")
+            return None
+
+        msg_id, char_name = await self._save_character_message(
+            data['char_id'], speech, token_total
+        )
+        return {
+            'id': msg_id,
+            'speaker': char_name,
+            'content': speech,
+            'is_moderator': False,
+            'is_user': False,
+        }
+
+    async def _get_character_response_with_decline(self, character_name: str, player_message: str) -> tuple:
         """
-        获取角色回复（支持婉拒机制）
+        获取角色回复（支持婉拒机制）。
+
+        三段式结构同 _get_character_response，LLM 在通用线程池中运行。
 
         Returns:
             tuple: (response_dict, declined_bool)
-                   - response_dict: 回复内容（如果是婉拒，则是婉拒语）
-                   - declined_bool: 是否婉拒
         """
-        from .models import Discussion, Character, Message
+        from .models import Character
         from .services.character import CharacterAgent
 
         try:
-            discussion = Discussion.objects.get(id=self.discussion_id)
-            char_obj = Character.objects.get(discussion=discussion, name=character_name)
+            data = await self._fetch_character_data(character_name)
+        except Character.DoesNotExist:
+            return {'error': f'未找到角色：{character_name}'}, False
+        except Exception as e:
+            logger.error(f"Error fetching character data for {character_name}: {e}")
+            return None, False
 
-            # 获取对话历史
-            history = self._get_conversation_history(discussion)
-
-            character_agent = CharacterAgent()
-
-            # 首先让AI决定是否应该回复
-            should_respond = character_agent.should_respond_to_player(
-                character_config={
-                    'name': char_obj.name,
-                    'bio': char_obj.bio,
-                    'era': char_obj.era,
-                    'background': char_obj.background,
-                    'language_style': char_obj.language_style,
-                    'temporal_constraints': char_obj.temporal_constraints,
-                    'viewpoints': char_obj.viewpoints,
-                },
+        def _llm_call():
+            agent = CharacterAgent(provider=data['llm_provider'] or None)
+            should_respond = agent.should_respond_to_player(
+                character_config=data['config'],
                 player_message=player_message,
-                conversation_history=history,
+                conversation_history=data['history'],
             )
-
-            speech = ""
-            declined = False
-
             if should_respond:
-                # 生成正常回复
-                speech = character_agent.generate_speech(
-                    character_config={
-                        'name': char_obj.name,
-                        'era': char_obj.era,
-                        'bio': char_obj.bio,
-                        'background': char_obj.background,
-                        'language_style': char_obj.language_style,
-                        'temporal_constraints': char_obj.temporal_constraints,
-                        'viewpoints': char_obj.viewpoints,
-                    },
-                    topic=discussion.topic,
-                    conversation_history=history,
-                    character_limit=discussion.character_limit,
+                speech = agent.generate_speech(
+                    character_config=data['config'],
+                    topic=data['topic'],
+                    conversation_history=data['history'],
+                    character_limit=data['character_limit'],
+                    model=data['llm_model'] or None,
                 )
+                token_total = (
+                    agent.last_token_usage.total_tokens
+                    if agent.last_token_usage else 0
+                )
+                return speech, token_total, False
             else:
-                # 生成婉拒回复
-                declined = True
-                speech = character_agent.generate_decline_response(
-                    character_config={
-                        'name': char_obj.name,
-                        'bio': char_obj.bio,
-                        'era': char_obj.era,
-                        'background': char_obj.background,
-                        'language_style': char_obj.language_style,
-                        'temporal_constraints': char_obj.temporal_constraints,
-                        'viewpoints': char_obj.viewpoints,
-                    },
+                speech = agent.generate_decline_response(
+                    character_config=data['config'],
                     player_message=player_message,
                 )
+                return speech, 0, True
 
-            # 保存消息
-            msg = Message.objects.create(
-                discussion=discussion,
-                character=char_obj,
-                content=speech,
-                word_count=len(speech),
-                is_moderator=False,
-                is_user=False,
-                read_but_no_reply=declined,
-            )
-
-            char_obj.message_count += 1
-            char_obj.save()
-
-            return {
-                'id': msg.id,
-                'speaker': char_obj.name,
-                'content': speech,
-                'is_moderator': False,
-                'is_user': False,
-            }, declined
-
-        except Character.DoesNotExist:
-            return {
-                'error': f'未找到角色：{character_name}'
-            }, False
+        try:
+            speech, token_total, declined = await sync_to_async(_llm_call)()
         except Exception as e:
-            logger.error(f"Error getting character response with decline: {e}")
+            logger.error(f"Error generating character response with decline for {character_name}: {e}")
             return None, False
+
+        msg_id, char_name = await self._save_character_message(
+            data['char_id'], speech, token_total, declined=declined
+        )
+        return {
+            'id': msg_id,
+            'speaker': char_name,
+            'content': speech,
+            'is_moderator': False,
+            'is_user': False,
+        }, declined
 
     async def _end_discussion(self):
         """结束讨论"""
@@ -573,6 +594,17 @@ class DiscussionConsumer(AsyncWebsocketConsumer):
             }))
 
             await self._send_debug_info("[结束] 讨论已成功终止")
+
+            # 播报 Token 统计汇总
+            try:
+                total = await sync_to_async(
+                    lambda: Discussion.objects.get(id=self.discussion_id).total_tokens
+                )()
+                await self._send_debug_info(
+                    f"[Token 统计] 本次会话共消耗 {total} tokens"
+                )
+            except Exception:
+                pass
 
         except Exception as e:
             logger.exception(f"Error ending discussion: {e}")
@@ -651,6 +683,53 @@ class DiscussionConsumer(AsyncWebsocketConsumer):
             logger.info("Player token returned to player")
         except Exception as e:
             logger.error(f"Error returning player token: {e}")
+
+    @database_sync_to_async
+    def _release_expired_tokens(self) -> list[str]:
+        """检查并自动释放已超时的令牌，返回被释放的令牌名称列表"""
+        from .models import Discussion
+        from django.utils import timezone
+        import datetime
+
+        released = []
+        try:
+            discussion = Discussion.objects.get(id=self.discussion_id)
+            now = timezone.now()
+            timeout = datetime.timedelta(seconds=discussion.token_timeout_seconds)
+
+            # 检查主持人令牌：非'主持人'持有 + 超时
+            if (
+                discussion.host_token_holder
+                and discussion.host_token_holder != '主持人'
+                and discussion.host_token_at
+                and now - discussion.host_token_at > timeout
+            ):
+                holder = discussion.host_token_holder
+                discussion.host_token_holder = '主持人'
+                discussion.host_token_at = now
+                released.append(f"主持人令牌（{holder} → 主持人，已持有 {timeout}）")
+
+            # 检查玩家令牌：非'玩家'持有 + 超时（participant 模式）
+            if (
+                discussion.user_role == 'participant'
+                and discussion.player_token_holder
+                and discussion.player_token_holder != '玩家'
+                and discussion.player_token_at
+                and now - discussion.player_token_at > timeout
+            ):
+                holder = discussion.player_token_holder
+                discussion.player_token_holder = '玩家'
+                discussion.player_waiting_for = None
+                discussion.player_token_at = now
+                released.append(f"玩家令牌（{holder} → 玩家，已持有 {timeout}）")
+
+            if released:
+                discussion.save()
+                logger.warning(f"[Token] Auto-released expired tokens: {released}")
+        except Exception as e:
+            logger.error(f"Error releasing expired tokens: {e}")
+
+        return released
 
     @database_sync_to_async
     def _is_in_init_phase(self) -> bool:
@@ -788,15 +867,16 @@ class DiscussionConsumer(AsyncWebsocketConsumer):
 
     @database_sync_to_async
     def _update_discussion_state(self, speaker: str):
-        """更新讨论状态（当前发言者和轮次）"""
+        """原子更新讨论轮次和当前发言者，避免与 AutoContinueService 的竞态覆盖"""
         from .models import Discussion
+        from django.db.models import F
 
         try:
-            discussion = Discussion.objects.get(id=self.discussion_id)
-            discussion.current_round += 1
-            discussion.current_speaker = speaker
-            discussion.save()
-            logger.info(f"Updated discussion state: round={discussion.current_round}, speaker={speaker}")
+            Discussion.objects.filter(id=self.discussion_id).update(
+                current_round=F('current_round') + 1,
+                current_speaker=speaker,
+            )
+            logger.info(f"Updated discussion state atomically: speaker={speaker}")
         except Exception as e:
             logger.error(f"Error updating discussion state: {e}")
 
@@ -832,8 +912,9 @@ class DiscussionConsumer(AsyncWebsocketConsumer):
             # 发送调试信息：开始自动继续
             await self._send_debug_info(f"[自动继续] 第 {current_round + 1} 轮开始")
 
-            if current_round >= 20:  # max_rounds 默认是20
-                await self._send_debug_info("[自动继续] 已达到最大轮次限制，停止")
+            max_rounds = state.get('max_rounds', 30)
+            if current_round >= max_rounds:
+                await self._send_debug_info(f"[自动继续] 已达到最大轮次限制 {max_rounds}，停止")
                 return
 
             # 获取所有角色
@@ -980,8 +1061,8 @@ class DiscussionConsumer(AsyncWebsocketConsumer):
             return None, None
 
     def _generate_invitation_sync(self, character_name: str, history: str, transition: str = None):
-        """生成邀请语"""
-        from .models import Discussion, Message
+        """生成邀请语（只返回文本，不保存消息——由调用方统一保存）"""
+        from .models import Discussion
         from .services.host_agent import HostAgent
 
         try:
@@ -993,14 +1074,6 @@ class DiscussionConsumer(AsyncWebsocketConsumer):
                 topic=discussion.topic,
                 conversation_history=history,
                 transition=transition
-            )
-
-            # 保存邀请消息
-            Message.objects.create(
-                discussion=discussion,
-                content=invitation,
-                word_count=len(invitation),
-                is_moderator=True,
             )
 
             return invitation
@@ -1036,11 +1109,17 @@ class DiscussionConsumer(AsyncWebsocketConsumer):
 
     async def handle_poll(self):
         """处理轮询请求"""
+        released = await self._release_expired_tokens()
         state = await self.get_state()
         await self.send(text_data=json.dumps({
             'type': 'poll_response',
             'data': state
         }))
+        if released:
+            await self.send(text_data=json.dumps({
+                'type': 'system_message',
+                'message': f'令牌超时已自动归还：{"; ".join(released)}'
+            }))
 
     async def broadcast_typing(self, data):
         """广播用户正在输入"""
@@ -1139,6 +1218,7 @@ class DiscussionConsumer(AsyncWebsocketConsumer):
             return {
                 'status': discussion.status,
                 'current_round': discussion.current_round,
+                'max_rounds': discussion.max_rounds,
                 'current_speaker': discussion.current_speaker,
                 'host_token_holder': discussion.host_token_holder,
                 'player_token_holder': discussion.player_token_holder,
