@@ -11,7 +11,7 @@ load_dotenv()
 BASE_DIR = Path(__file__).resolve().parent.parent.parent
 
 # SECURITY WARNING: don't run with debug turned on in production!
-DEBUG = os.getenv('DEBUG', 'True').lower() in ('true', '1', 'yes')
+DEBUG = os.getenv('DEBUG', 'False').lower() in ('true', '1', 'yes')
 
 # SECURITY WARNING: keep the secret key used in production secret!
 # In production, DJANGO_SECRET_KEY environment variable MUST be set.
@@ -45,15 +45,32 @@ MIDDLEWARE = [
 
 ROOT_URLCONF = 'backend.config.urls'
 
+# In DEBUG mode, bypass cached.Loader so template edits are visible without restart.
+# In production, use cached.Loader for performance.
+_template_loaders = (
+    [
+        'django.template.loaders.filesystem.Loader',
+        'django.template.loaders.app_directories.Loader',
+    ]
+    if DEBUG else
+    [
+        ('django.template.loaders.cached.Loader', [
+            'django.template.loaders.filesystem.Loader',
+            'django.template.loaders.app_directories.Loader',
+        ])
+    ]
+)
+
 TEMPLATES = [
     {
         'BACKEND': 'django.template.backends.django.DjangoTemplates',
         'DIRS': [BASE_DIR / 'templates'],
-        'APP_DIRS': True,
+        'APP_DIRS': False,          # must be False when 'loaders' is set
         'OPTIONS': {
             'context_processors': [
                 'django.template.context_processors.debug',
             ],
+            'loaders': _template_loaders,
         },
     },
 ]
@@ -63,15 +80,17 @@ ASGI_APPLICATION = 'backend.config.asgi.application'
 
 # Channel Layers for WebSocket
 # Use InMemoryChannelLayer if Redis is not available
+_redis_host = os.getenv('REDIS_HOST', 'localhost')
+_redis_port = int(os.getenv('REDIS_PORT', '6379'))
 try:
     import redis
-    r = redis.Redis(host='localhost', port=6379, socket_connect_timeout=1)
+    r = redis.Redis(host=_redis_host, port=_redis_port, socket_connect_timeout=1)
     r.ping()
     CHANNEL_LAYERS = {
         'default': {
             'BACKEND': 'channels_redis.core.RedisChannelLayer',
             'CONFIG': {
-                'hosts': [('localhost', 6379)],
+                'hosts': [(_redis_host, _redis_port)],
             },
         },
     }

@@ -161,9 +161,18 @@ class LLMClient:
                 logger.warning(f"LLM timeout, retrying ({attempt + 1}/{self.max_retries})")
                 time.sleep(2 ** attempt)
             except LLMAPIError as e:
+                # Non-retryable: auth errors, bad requests — retrying won't help
+                if e.status_code in (400, 401, 403, 404):
+                    logger.error(
+                        f"LLM non-retryable error (status={e.status_code}): {e}"
+                    )
+                    raise
                 if attempt == self.max_retries - 1:
                     raise
-                logger.warning(f"LLM API error: {e}, retrying ({attempt + 1}/{self.max_retries})")
+                logger.warning(
+                    f"LLM API error (status={e.status_code}): {e}, "
+                    f"retrying ({attempt + 1}/{self.max_retries})"
+                )
                 time.sleep(2 ** attempt)
 
 
@@ -196,12 +205,19 @@ class OpenAIBackend:
 
         response_format = {"type": "json_object"} if json_mode else None
 
-        response = self._client.chat.completions.create(
-            model=model or self.provider.default_model,
-            messages=messages,
-            response_format=response_format,
-            **kwargs,
-        )
+        try:
+            response = self._client.chat.completions.create(
+                model=model or self.provider.default_model,
+                messages=messages,
+                response_format=response_format,
+                **kwargs,
+            )
+        except openai.APITimeoutError as e:
+            raise LLMTimeoutError(str(e)) from e
+        except openai.APIConnectionError as e:
+            raise LLMTimeoutError(str(e)) from e
+        except openai.APIStatusError as e:
+            raise LLMAPIError(str(e), status_code=e.status_code) from e
 
         usage = TokenUsage(
             prompt_tokens=response.usage.prompt_tokens,
@@ -243,7 +259,14 @@ class AnthropicBackend:
         if system_prompt:
             params["system"] = system_prompt
 
-        response = self._client.messages.create(**params)
+        try:
+            response = self._client.messages.create(**params)
+        except anthropic.APITimeoutError as e:
+            raise LLMTimeoutError(str(e)) from e
+        except anthropic.APIConnectionError as e:
+            raise LLMTimeoutError(str(e)) from e
+        except anthropic.APIStatusError as e:
+            raise LLMAPIError(str(e), status_code=e.status_code) from e
 
         # Handle response content, which may include ThinkingBlocks
         text_parts = []
