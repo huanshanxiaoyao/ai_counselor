@@ -35,6 +35,6 @@ warn_unused_ignores = true
 show_error_codes = true
 
 [tool.pytest.ini_options]
-DJANGO_SETTINGS_MODULE = "config.settings"
+DJANGO_SETTINGS_MODULE = "backend.config.settings_test"
 python_files = ["test_*.py", "*_test.py"]
 addopts = "-v --tb=short"
