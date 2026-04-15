@@ -115,6 +115,40 @@
         box-shadow: 0 3px 10px rgba(102, 126, 234, 0.4);
     }
 
+    .btn-debug {
+        padding: 8px 14px;
+        background: #f5f5f5;
+        border: 1px solid #ddd;
+        border-radius: 6px;
+        cursor: pointer;
+        font-size: 0.8rem;
+        color: #888;
+        transition: all 0.2s;
+    }
+
+    .btn-debug.active {
+        background: #fff8e1;
+        border-color: #ffcc80;
+        color: #e65100;
+    }
+
+    .btn-debug:hover {
+        background: #eee;
+    }
+
+    .btn-debug.active:hover {
+        background: #ffe0b2;
+    }
+
+    /* 调试信息默认隐藏，通过开关控制 */
+    .debug-info {
+        display: none;
+    }
+
+    .debug-visible .debug-info {
+        display: block;
+    }
+
     /* Main Area */
     .main-area {
         display: flex;
@@ -649,6 +683,7 @@
                 <span>🔄</span>
                 <span>轮次：<strong id="current-round">{{ current_round }}</strong>/{{ max_rounds }}</span>
             </div>
+            <button class="btn-debug" id="btn-debug" title="显示/隐藏调试信息">🔍 调试</button>
             <button class="btn-export" id="btn-export" title="导出对话记录">📝 导出</button>
             <button class="btn-refresh" onclick="location.reload()">🔄 刷新</button>
         </div>
@@ -961,15 +996,26 @@
         hideLoading();
     }
 
+    // 调试信息开关
+    let debugVisible = false;
+    const btnDebug = document.getElementById('btn-debug');
+    btnDebug.addEventListener('click', () => {
+        debugVisible = !debugVisible;
+        btnDebug.classList.toggle('active', debugVisible);
+        btnDebug.title = debugVisible ? '隐藏调试信息' : '显示调试信息';
+        messagesList.classList.toggle('debug-visible', debugVisible);
+    });
+
     // 调试信息显示函数
     function showDebugInfo(message) {
-        // 在消息列表末尾显示调试信息（保持时间顺序）
         const debugEl = document.createElement('div');
         debugEl.className = 'debug-info';
         debugEl.style.cssText = 'background:#f5f5f5;border-left:3px solid #ff9800;padding:8px 12px;margin-bottom:10px;font-size:0.8rem;color:#666;font-family:monospace;';
         debugEl.textContent = `[调试] ${message}`;
         messagesList.appendChild(debugEl);
-        scrollToBottom();
+        if (debugVisible) {
+            scrollToBottom();
+        }
     }
 
     // 令牌状态显示函数
@@ -1042,7 +1088,7 @@
     // Send message via WebSocket
     btnSend.addEventListener('click', sendMessage);
     messageInput.addEventListener('keydown', (e) => {
-        if (e.key === 'Enter' && !e.shiftKey) {
+        if (e.key === 'Enter' && !e.shiftKey && !e.isComposing) {
             e.preventDefault();
             if (mentionDropdown.classList.contains('active')) {
                 selectMentionItem(selectedMentionIndex);

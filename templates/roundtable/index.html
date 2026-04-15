@@ -1,740 +1,753 @@
 {% extends 'common/base.html' %}
 {% load static %}
 
-{% block title %}圆桌会谈 - AI Tools{% endblock %}
+{% block title %}圆桌会谈{% endblock %}
 
 {% block extra_css %}
 <style>
-    .page-header {
-        text-align: center;
-        margin-bottom: 40px;
-    }
+@import url('https://fonts.googleapis.com/css2?family=Noto+Serif+SC:wght@300;400;600;700&display=swap');
 
-    .page-header h1 {
-        font-size: 2rem;
-        margin-bottom: 12px;
-        background: linear-gradient(90deg, #ff6b6b, #ffa500);
-        -webkit-background-clip: text;
-        -webkit-text-fill-color: transparent;
-        background-clip: text;
-    }
+:root {
+  --gold:        #c8a845;
+  --gold-light:  #e5c96a;
+  --gold-dim:    rgba(200,168,69,0.18);
+  --gold-border: rgba(200,168,69,0.35);
+  --surface:     rgba(255,255,255,0.10);
+  --surface-2:   rgba(255,255,255,0.14);
+  --text:        #ede5d0;
+  --muted:       #c8bfad;
+  --red:         #d96060;
+}
 
-    .page-header p {
-        color: rgba(255, 255, 255, 0.7);
-        font-size: 1rem;
-    }
+/* ── page wrapper ── */
+.rt-page {
+  max-width: 740px;
+  margin: 0 auto;
+  padding: 0 20px 72px;
+}
 
-    .setup-card {
-        max-width: 700px;
-        margin: 0 auto;
-        background: rgba(255, 255, 255, 0.05);
-        border: 1px solid rgba(255, 255, 255, 0.1);
-        border-radius: 16px;
-        padding: 40px;
-    }
+/* ── hero ── */
+.rt-hero {
+  text-align: center;
+  padding: 52px 0 44px;
+}
 
-    .form-group {
-        margin-bottom: 24px;
-    }
+.rt-hero h1 {
+  font-family: 'Noto Serif SC', 'Songti SC', 'STSong', serif;
+  font-size: 2.8rem;
+  font-weight: 700;
+  letter-spacing: 0.18em;
+  line-height: 1;
+  margin-bottom: 14px;
+  color: #e8d9b0;
+  text-shadow:
+    0 0 40px rgba(200,168,69,0.55),
+    0 2px 8px rgba(0,0,0,0.60);
+}
 
-    .form-group label {
-        display: block;
-        font-size: 0.95rem;
-        color: rgba(255, 255, 255, 0.8);
-        margin-bottom: 8px;
-    }
+.rt-hero p {
+  font-size: 0.92rem;
+  color: var(--muted);
+  letter-spacing: 0.08em;
+}
 
-    .form-group input,
-    .form-group select {
-        width: 100%;
-        padding: 14px 16px;
-        background: rgba(0, 0, 0, 0.3);
-        border: 2px solid rgba(255, 255, 255, 0.1);
-        border-radius: 8px;
-        color: #fff;
-        font-size: 1rem;
-        transition: border-color 0.2s;
-    }
+.rt-hero-rule {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin: 28px auto 0;
+  max-width: 200px;
+}
 
-    .form-group input:focus,
-    .form-group select:focus {
-        outline: none;
-        border-color: #ff6b6b;
-    }
+.rt-hero-rule::before,
+.rt-hero-rule::after {
+  content: '';
+  flex: 1;
+  height: 1px;
+  background: linear-gradient(90deg, transparent, var(--gold));
+}
 
-    .form-group input::placeholder {
-        color: rgba(255, 255, 255, 0.4);
-    }
+.rt-hero-rule::after {
+  background: linear-gradient(90deg, var(--gold), transparent);
+}
 
-    .form-group select option {
-        background: #2a2a3e;
-        color: #fff;
-    }
+.rt-hero-rule span {
+  font-size: 0.55rem;
+  color: var(--gold);
+  letter-spacing: 0.1em;
+}
 
-    .form-hint {
-        font-size: 0.8rem;
-        color: rgba(255, 255, 255, 0.5);
-        margin-top: 6px;
-    }
+/* ── history strip ── */
+.history-strip {
+  margin-bottom: 32px;
+}
 
-    .form-hint.moderator-hint {
-        color: #ffa500;
-        font-weight: 500;
-    }
+.strip-header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 10px;
+}
 
-    .btn-primary {
-        width: 100%;
-        padding: 16px;
-        background: linear-gradient(135deg, #ff6b6b 0%, #ffa500 100%);
-        color: white;
-        border: none;
-        border-radius: 8px;
-        font-size: 1rem;
-        font-weight: 600;
-        cursor: pointer;
-        transition: transform 0.2s, box-shadow 0.2s;
-    }
+.strip-label {
+  font-size: 0.68rem;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: #d4c898;
+  font-weight: 600;
+  white-space: nowrap;
+}
 
-    .btn-primary:hover:not(:disabled) {
-        transform: translateY(-2px);
-        box-shadow: 0 8px 25px rgba(255, 107, 107, 0.3);
-    }
+.strip-divider {
+  flex: 1;
+  height: 1px;
+  background: rgba(200,168,69,0.15);
+}
 
-    .btn-primary:disabled {
-        opacity: 0.6;
-        cursor: not-allowed;
-    }
+/* history-list is the scrollable flex row */
+#history-list {
+  display: flex;
+  gap: 10px;
+  overflow-x: auto;
+  padding-bottom: 6px;
+  scrollbar-width: thin;
+  scrollbar-color: var(--gold-border) transparent;
+}
 
-    .characters-section {
-        margin-top: 50px;
-        display: none;
-    }
+#history-list::-webkit-scrollbar { height: 3px; }
+#history-list::-webkit-scrollbar-track { background: transparent; }
+#history-list::-webkit-scrollbar-thumb { background: var(--gold-border); border-radius: 2px; }
 
-    .characters-section.active {
-        display: block;
-    }
+/* items rendered by loadHistory() JS */
+.history-item {
+  flex-shrink: 0;
+  width: 196px;
+  background: rgba(255,255,255,0.13);
+  border: 1px solid rgba(200,168,69,0.40);
+  border-radius: 10px;
+  padding: 12px 14px;
+  transition: background 0.2s, border-color 0.2s;
+}
 
-    .section-title {
-        text-align: center;
-        font-size: 1.3rem;
-        margin-bottom: 24px;
-        color: #fff;
-    }
+.history-item:hover {
+  background: rgba(200,168,69,0.14);
+  border-color: rgba(200,168,69,0.55);
+}
 
-    .characters-grid {
-        display: grid;
-        grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
-        gap: 16px;
-    }
+.history-topic {
+  font-size: 0.88rem;
+  font-weight: 700;
+  color: #d4c898;
+  margin-bottom: 5px;
+  line-height: 1.4;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
 
-    .character-card {
-        background: rgba(60, 60, 80, 0.6);
-        border: 2px solid rgba(255, 255, 255, 0.25);
-        border-radius: 12px;
-        padding: 16px;
-        cursor: pointer;
-        transition: all 0.2s;
-    }
+.history-meta {
+  font-size: 0.7rem;
+  color: #b0a892;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  align-items: center;
+  margin-bottom: 7px;
+}
 
-    .character-card:hover {
-        border-color: rgba(255, 107, 107, 0.6);
-        background: rgba(80, 80, 100, 0.7);
-    }
+.history-status {
+  padding: 1px 5px;
+  border-radius: 6px;
+  font-size: 0.66rem;
+  font-weight: 600;
+}
 
-    .character-card.selected {
-        border-color: #ff6b6b;
-        background: rgba(80, 60, 70, 0.7);
-    }
+.history-status.active   { background: rgba(76,175,80,0.28);  color: #a5d6a7; }
+.history-status.finished { background: rgba(200,168,69,0.28); color: #e5c96a; }
 
-    .character-card .char-name {
-        font-size: 1.15rem;
-        font-weight: 700;
-        color: #ffffff;
-        margin-bottom: 6px;
-        text-shadow: 0 1px 2px rgba(0,0,0,0.3);
-    }
+.history-characters {
+  font-size: 0.7rem;
+  color: #b0a892;
+  margin-bottom: 8px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
 
-    .character-card .char-era {
-        font-size: 0.9rem;
-        color: #ffcc80;
-        margin-bottom: 10px;
-        font-weight: 500;
-    }
+.history-actions { display: flex; gap: 5px; }
 
-    .character-card .char-reason {
-        font-size: 0.9rem;
-        color: rgba(255, 255, 255, 0.95);
-        line-height: 1.6;
-    }
+.btn-view, .btn-restart {
+  padding: 4px 8px;
+  border-radius: 5px;
+  font-size: 0.7rem;
+  cursor: pointer;
+  transition: all 0.18s;
+}
 
-    .character-card .char-checkbox {
-        position: absolute;
-        top: 12px;
-        right: 12px;
-        width: 24px;
-        height: 24px;
-        border: 2px solid rgba(255, 255, 255, 0.3);
-        border-radius: 50%;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        font-size: 14px;
-        color: transparent;
-        transition: all 0.2s;
-    }
+.btn-view {
+  background: rgba(255,255,255,0.16);
+  color: #e8e0cc;
+  border: 1px solid rgba(255,255,255,0.28);
+  font-weight: 500;
+}
+.btn-view:hover { background: rgba(255,255,255,0.24); }
 
-    .character-card.selected .char-checkbox {
-        background: #ff6b6b;
-        border-color: #ff6b6b;
-        color: white;
-    }
+.btn-restart {
+  background: rgba(200,168,69,0.22);
+  color: #e5c96a;
+  border: 1px solid rgba(200,168,69,0.50);
+  font-weight: 600;
+}
+.btn-restart:hover { background: rgba(200,168,69,0.32); }
+.btn-restart:disabled { opacity: 0.40; cursor: not-allowed; }
 
-    .character-card {
-        position: relative;
-        padding-right: 44px;
-    }
+.history-empty {
+  width: 100%;
+  text-align: center;
+  font-size: 0.78rem;
+  color: #b0a892;
+  padding: 8px 0;
+}
 
-    .selection-info {
-        text-align: center;
-        margin: 24px 0;
-        color: rgba(255, 255, 255, 0.7);
-        font-size: 0.95rem;
-    }
+/* ── form card ── */
+.setup-card {
+  background: var(--surface);
+  border: 1px solid var(--gold-border);
+  border-radius: 14px;
+  padding: 36px 40px;
+  position: relative;
+  overflow: hidden;
+}
 
-    .selection-info strong {
-        color: #ff6b6b;
-    }
+/* top-edge gold shimmer */
+.setup-card::before {
+  content: '';
+  position: absolute;
+  top: 0; left: 0; right: 0;
+  height: 1px;
+  background: linear-gradient(90deg, transparent 0%, var(--gold) 50%, transparent 100%);
+}
 
-    .btn-start {
-        display: none;
-        width: 100%;
-        padding: 16px;
-        background: linear-gradient(135deg, #00d9ff 0%, #00ff88 100%);
-        color: #1a1a2e;
-        border: none;
-        border-radius: 8px;
-        font-size: 1rem;
-        font-weight: 600;
-        cursor: pointer;
-        transition: transform 0.2s, box-shadow 0.2s;
-    }
+.form-group { margin-bottom: 22px; }
 
-    .btn-start.active {
-        display: block;
-    }
+.form-group label {
+  display: block;
+  font-size: 0.7rem;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--gold);
+  margin-bottom: 8px;
+  font-weight: 600;
+}
 
-    .btn-start:hover {
-        transform: translateY(-2px);
-        box-shadow: 0 8px 25px rgba(0, 217, 255, 0.3);
-    }
+.form-group input,
+.form-group select {
+  width: 100%;
+  padding: 13px 16px;
+  background: rgba(0,0,0,0.38);
+  border: 1px solid rgba(255,255,255,0.1);
+  border-radius: 8px;
+  color: var(--text);
+  font-size: 0.97rem;
+  transition: border-color 0.2s, box-shadow 0.2s;
+  -webkit-appearance: none;
+  appearance: none;
+}
 
-    .loading-indicator {
-        display: none;
-        text-align: center;
-        padding: 40px;
-    }
+.form-group select {
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6'%3E%3Cpath d='M0 0l5 6 5-6z' fill='%23c8a845'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 14px center;
+  background-color: rgba(0,0,0,0.38);
+  padding-right: 36px;
+}
 
-    .loading-indicator.active {
-        display: block;
-    }
+.form-group input:focus,
+.form-group select:focus {
+  outline: none;
+  border-color: rgba(200,168,69,0.5);
+  box-shadow: 0 0 0 3px rgba(200,168,69,0.07);
+}
 
-    .spinner {
-        width: 48px;
-        height: 48px;
-        border: 4px solid rgba(255, 107, 107, 0.2);
-        border-top-color: #ff6b6b;
-        border-radius: 50%;
-        animation: spin 1s linear infinite;
-        margin: 0 auto 16px;
-    }
+.form-group input::placeholder { color: var(--muted); }
+.form-group select option { background: #1a1520; color: var(--text); }
 
-    @keyframes spin {
-        to { transform: rotate(360deg); }
-    }
+.form-hint {
+  font-size: 0.77rem;
+  color: var(--muted);
+  margin-top: 6px;
+  line-height: 1.55;
+}
+.form-hint.moderator-hint { color: var(--gold); }
 
-    .error-message {
-        display: none;
-        background: rgba(231, 76, 60, 0.2);
-        border: 1px solid rgba(231, 76, 60, 0.4);
-        border-radius: 8px;
-        padding: 16px;
-        margin-bottom: 24px;
-        color: #e74c3c;
-    }
+.btn-primary {
+  width: 100%;
+  padding: 14px;
+  background: transparent;
+  border: 1px solid var(--gold-border);
+  border-radius: 8px;
+  color: var(--gold-light);
+  font-size: 0.95rem;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  cursor: pointer;
+  transition: background 0.22s, border-color 0.22s, box-shadow 0.22s;
+}
 
-    .error-message.active {
-        display: block;
-    }
+.btn-primary:hover:not(:disabled) {
+  background: var(--gold-dim);
+  border-color: rgba(200,168,69,0.45);
+  box-shadow: 0 0 22px rgba(200,168,69,0.12);
+}
 
-    /* History Section - Sidebar Layout */
-    .page-layout {
-        display: flex;
-        gap: 24px;
-        max-width: 1000px;
-        margin: 0 auto;
-        padding: 0 20px;
-    }
+.btn-primary:disabled { opacity: 0.38; cursor: not-allowed; }
 
-    .history-sidebar {
-        width: 280px;
-        flex-shrink: 0;
-        background: rgba(30, 30, 50, 0.8);
-        border: 1px solid rgba(255, 255, 255, 0.15);
-        border-radius: 16px;
-        padding: 20px;
-        height: calc(100vh - 200px);
-        overflow-y: auto;
-    }
+/* ── error ── */
+.error-message {
+  display: none;
+  background: rgba(217,96,96,0.1);
+  border: 1px solid rgba(217,96,96,0.28);
+  border-radius: 8px;
+  padding: 12px 16px;
+  margin-bottom: 20px;
+  color: #e88080;
+  font-size: 0.87rem;
+}
+.error-message.active { display: block; }
 
-    .sidebar-title {
-        font-size: 1rem;
-        color: #fff;
-        margin-bottom: 16px;
-        padding-bottom: 12px;
-        border-bottom: 1px solid rgba(255, 255, 255, 0.15);
-        display: flex;
-        align-items: center;
-        gap: 8px;
-    }
+/* ── loading ── */
+.loading-indicator {
+  display: none;
+  text-align: center;
+  padding: 38px 0;
+}
+.loading-indicator.active { display: block; }
 
-    .sidebar-title::before {
-        content: '📜';
-    }
+.spinner {
+  width: 34px;
+  height: 34px;
+  border: 2px solid rgba(200,168,69,0.15);
+  border-top-color: var(--gold);
+  border-radius: 50%;
+  animation: rt-spin 0.85s linear infinite;
+  margin: 0 auto 14px;
+}
 
-    .history-empty {
-        text-align: center;
-        color: rgba(255, 255, 255, 0.5);
-        padding: 20px;
-        font-size: 0.85rem;
-    }
+@keyframes rt-spin { to { transform: rotate(360deg); } }
 
-    .history-list {
-        display: flex;
-        flex-direction: column;
-        gap: 10px;
-    }
+.loading-indicator p {
+  font-size: 0.84rem;
+  color: var(--muted);
+  letter-spacing: 0.05em;
+}
 
-    .history-item {
-        background: rgba(255, 255, 255, 0.08);
-        border: 1px solid rgba(255, 255, 255, 0.12);
-        border-radius: 10px;
-        padding: 12px;
-        transition: all 0.2s;
-    }
+/* ── characters section ── */
+.characters-section {
+  display: none;
+  margin-top: 30px;
+}
+.characters-section.active {
+  display: block;
+  animation: rt-fadein 0.32s ease;
+}
 
-    .history-item:hover {
-        background: rgba(255, 255, 255, 0.15);
-        border-color: rgba(255, 255, 255, 0.25);
-    }
+@keyframes rt-fadein {
+  from { opacity: 0; transform: translateY(10px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
 
-    .history-topic {
-        font-size: 0.9rem;
-        color: #fff;
-        font-weight: 600;
-        margin-bottom: 6px;
-        line-height: 1.4;
-        display: -webkit-box;
-        -webkit-line-clamp: 2;
-        -webkit-box-orient: vertical;
-        overflow: hidden;
-    }
+.section-divider {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  margin-bottom: 18px;
+}
+.section-divider::before,
+.section-divider::after {
+  content: '';
+  flex: 1;
+  height: 1px;
+  background: var(--gold-border);
+}
+.section-divider span {
+  font-size: 0.7rem;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--gold);
+  white-space: nowrap;
+}
 
-    .history-meta {
-        font-size: 0.75rem;
-        color: rgba(255, 255, 255, 0.7);
-        display: flex;
-        flex-wrap: wrap;
-        gap: 6px;
-        align-items: center;
-        margin-bottom: 10px;
-    }
+.characters-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(272px, 1fr));
+  gap: 11px;
+  margin-bottom: 20px;
+}
 
-    .history-status {
-        display: inline-block;
-        padding: 2px 6px;
-        border-radius: 8px;
-        font-size: 0.7rem;
-        font-weight: 500;
-    }
+.character-card {
+  background: rgba(255,255,255,0.09);
+  border: 1px solid rgba(255,255,255,0.18);
+  border-radius: 10px;
+  padding: 14px 40px 14px 16px;
+  cursor: pointer;
+  transition: border-color 0.2s, background 0.2s;
+  position: relative;
+}
 
-    .history-status.active {
-        background: rgba(76, 175, 80, 0.3);
-        color: #81c784;
-    }
+.character-card:hover {
+  border-color: rgba(200,168,69,0.3);
+  background: rgba(200,168,69,0.04);
+}
 
-    .history-status.finished {
-        background: rgba(255, 152, 0, 0.3);
-        color: #ffb74d;
-    }
+.character-card.selected {
+  border-color: var(--gold);
+  background: rgba(200,168,69,0.07);
+}
 
-    .history-characters {
-        font-size: 0.75rem;
-        color: rgba(255, 255, 255, 0.65);
-        margin-bottom: 10px;
-        line-height: 1.3;
-    }
+.char-name {
+  font-size: 1.02rem;
+  font-weight: 700;
+  color: var(--text);
+  margin-bottom: 3px;
+}
 
-    .history-actions {
-        display: flex;
-        gap: 6px;
-    }
+.char-era {
+  font-size: 0.77rem;
+  color: var(--gold);
+  margin-bottom: 8px;
+  font-weight: 500;
+}
 
-    .btn-view, .btn-restart {
-        padding: 6px 10px;
-        border: none;
-        border-radius: 5px;
-        font-size: 0.75rem;
-        cursor: pointer;
-        transition: all 0.2s;
-    }
+.char-reason {
+  font-size: 0.84rem;
+  color: #d4cbb8;
+  line-height: 1.58;
+}
 
-    .btn-view {
-        background: rgba(255, 255, 255, 0.12);
-        color: #fff;
-    }
+.char-checkbox {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  width: 20px;
+  height: 20px;
+  border: 1px solid rgba(255,255,255,0.18);
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 11px;
+  color: transparent;
+  transition: all 0.18s;
+}
 
-    .btn-view:hover {
-        background: rgba(255, 255, 255, 0.2);
-    }
+.character-card.selected .char-checkbox {
+  background: var(--gold);
+  border-color: var(--gold);
+  color: #0d0b14;
+}
 
-    .btn-restart {
-        background: linear-gradient(135deg, #00d9ff, #00ff88);
-        color: #1a1a2e;
-        font-weight: 600;
-    }
+/* ── selection bar ── */
+.selection-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 16px 0 0;
+  border-top: 1px solid var(--gold-border);
+  gap: 16px;
+}
 
-    .btn-restart:hover {
-        transform: translateY(-1px);
-        box-shadow: 0 2px 8px rgba(0, 217, 255, 0.3);
-    }
+.selection-info {
+  font-size: 0.84rem;
+  color: var(--muted);
+}
+.selection-info strong { color: var(--gold); font-weight: 700; }
 
-    .btn-restart:disabled {
-        opacity: 0.6;
-        cursor: not-allowed;
-        transform: none;
-    }
+.btn-start {
+  display: none;
+  padding: 11px 28px;
+  background: linear-gradient(135deg, #c8a845 0%, #e5c96a 100%);
+  color: #0d0b14;
+  border: none;
+  border-radius: 8px;
+  font-size: 0.9rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  cursor: pointer;
+  transition: transform 0.2s, box-shadow 0.2s;
+  white-space: nowrap;
+}
 
-    /* Main content area */
-    .main-content {
-        flex: 1;
-        min-width: 0;
-    }
+.btn-start.active { display: block; }
 
-    .setup-card {
-        max-width: none;
-        margin: 0;
-    }
+.btn-start:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 6px 20px rgba(200,168,69,0.28);
+}
 
-    /* Responsive: collapse sidebar on small screens */
-    @media (max-width: 768px) {
-        .page-layout {
-            flex-direction: column;
-        }
-        .history-sidebar {
-            width: 100%;
-            height: auto;
-            max-height: 300px;
-            order: -1;
-            margin-bottom: 20px;
-        }
-    }
+/* ── responsive ── */
+@media (max-width: 620px) {
+  .setup-card { padding: 24px 20px; }
+  .rt-hero h1 { font-size: 2rem; }
+  .characters-grid { grid-template-columns: 1fr; }
+  .selection-bar { flex-direction: column; align-items: flex-start; }
+}
 </style>
 {% endblock %}
 
 {% block content %}
-<div class="page-header">
+<div class="rt-page">
+
+  <!-- Hero -->
+  <div class="rt-hero">
     <h1>圆桌会谈</h1>
-    <p>与历史人物展开跨越时空的对话</p>
-</div>
+    <p>召集古今贤者，共论时代之问</p>
+    <div class="rt-hero-rule"><span>✦</span></div>
+  </div>
 
-<div class="page-layout">
-    <!-- History Sidebar -->
-    <div class="history-sidebar">
-        <div class="sidebar-title">历史会谈</div>
-        <div class="history-list" id="history-list">
-            <div class="history-empty">加载中...</div>
-        </div>
-    </div>
+  <!-- Form Card -->
+  <div class="setup-card">
+    <div id="error-message" class="error-message"></div>
 
-    <!-- Main Content -->
-    <div class="main-content">
-        <div class="setup-card">
-            <div id="error-message" class="error-message"></div>
+    <form id="topic-form">
+      <div class="form-group">
+        <label for="topic-input">讨论话题</label>
+        <input
+          type="text"
+          id="topic-input"
+          placeholder="例如：项羽该不该渡江"
+          maxlength="200"
+          required
+        >
+        <div class="form-hint">输入你想讨论的话题，AI 将为你推荐合适的历史人物</div>
+      </div>
 
-            <form id="topic-form">
-        <div class="form-group">
-            <label for="topic-input">讨论话题</label>
-            <input
-                type="text"
-                id="topic-input"
-                placeholder="例如：项羽该不该渡江"
-                maxlength="200"
-                required
-            >
-            <div class="form-hint">输入你想讨论的话题，系统将为你推荐合适的嘉宾</div>
-        </div>
+      <div class="form-group">
+        <label for="user-role-select">你的身份</label>
+        <select id="user-role-select">
+          <option value="participant" selected>🎭 参与者 · 与角色对话</option>
+          <option value="host">🎤 主持人 · 控制发言节奏</option>
+          <option value="observer">👁️ 旁观者 · 仅观看</option>
+        </select>
+        <div class="form-hint" id="role-hint">参与者可以直接发言，也可以用 @角色名 让特定角色回复</div>
+      </div>
 
-        <div class="form-group">
-            <label for="user-role-select">你的角色</label>
-            <select id="user-role-select" class="form-group select">
-                <option value="participant" selected>🎭 参与者（与角色对话）</option>
-                <option value="host">🎤 主持人（控制发言节奏）</option>
-                <option value="observer">👁️ 旁观者（仅观看）</option>
-            </select>
-            <div class="form-hint" id="role-hint">选择「主持人」时，你需要手动邀请角色发言</div>
-        </div>
-
-        <button type="submit" id="btn-get-chars" class="btn-primary">
-            获取推荐嘉宾
-        </button>
+      <button type="submit" id="btn-get-chars" class="btn-primary">
+        召集嘉宾
+      </button>
     </form>
 
     <div id="loading-indicator" class="loading-indicator">
-        <div class="spinner"></div>
-        <p>正在分析话题，邀请嘉宾...</p>
+      <div class="spinner"></div>
+      <p>正在分析话题，邀请嘉宾…</p>
     </div>
 
     <div id="characters-section" class="characters-section">
-        <h2 class="section-title">为你推荐以下嘉宾（选择 3-5 位）</h2>
-        <div id="characters-grid" class="characters-grid"></div>
-
-        <div class="selection-info">
-            已选择：<strong id="selected-count">0</strong> 位嘉宾
-        </div>
-
-        <button id="btn-start" class="btn-start" disabled>
-            开始讨论
-        </button>
+      <div class="section-divider"><span>为你推荐以下嘉宾（选择 3–5 位）</span></div>
+      <div id="characters-grid" class="characters-grid"></div>
+      <div class="selection-bar">
+        <div class="selection-info">已选：<strong id="selected-count">0</strong> 位</div>
+        <button id="btn-start" class="btn-start" disabled>前往配置 →</button>
+      </div>
     </div>
-</div>
+  </div>
+
+  <!-- History Strip — below main card -->
+  <div class="history-strip" style="margin-top: 32px;">
+    <div class="strip-header">
+      <span class="strip-label">历史会谈</span>
+      <div class="strip-divider"></div>
+    </div>
+    <div id="history-list">
+      <div class="history-empty">加载中…</div>
+    </div>
+  </div>
+
 </div>
 {% endblock %}
 
 {% block extra_js %}
 <script>
-    const MIN_SELECT = 3;
-    const MAX_SELECT = 8;
+  const MIN_SELECT = 3;
+  const MAX_SELECT = 8;
 
-    // DEBUG: Track timing (set to false in production)
-    let startTime = null;
-    const isDebug = false;
+  let selectedCharacters = [];
+  let currentTopic = '';
 
-    let selectedCharacters = [];
-    let currentTopic = '';
+  const topicForm        = document.getElementById('topic-form');
+  const topicInput       = document.getElementById('topic-input');
+  const userRoleSelect   = document.getElementById('user-role-select');
+  const roleHint         = document.getElementById('role-hint');
+  const btnGetChars      = document.getElementById('btn-get-chars');
+  const loadingIndicator = document.getElementById('loading-indicator');
+  const charactersSection= document.getElementById('characters-section');
+  const charactersGrid   = document.getElementById('characters-grid');
+  const selectedCount    = document.getElementById('selected-count');
+  const btnStart         = document.getElementById('btn-start');
+  const errorMessage     = document.getElementById('error-message');
 
-    const topicForm = document.getElementById('topic-form');
-    const topicInput = document.getElementById('topic-input');
-    const userRoleSelect = document.getElementById('user-role-select');
-    const roleHint = document.getElementById('role-hint');
-    const btnGetChars = document.getElementById('btn-get-chars');
-    const loadingIndicator = document.getElementById('loading-indicator');
-    const charactersSection = document.getElementById('characters-section');
-    const charactersGrid = document.getElementById('characters-grid');
-    const selectedCount = document.getElementById('selected-count');
-    const btnStart = document.getElementById('btn-start');
-    const errorMessage = document.getElementById('error-message');
+  userRoleSelect.addEventListener('change', () => {
+    const role = userRoleSelect.value;
+    if (role === 'host') {
+      roleHint.textContent = '主持人可以直接发言，也可以用 @角色名 让角色回复';
+      roleHint.classList.add('moderator-hint');
+    } else if (role === 'observer') {
+      roleHint.textContent = '旁观者模式：只能观看，不能发言';
+      roleHint.classList.remove('moderator-hint');
+    } else {
+      roleHint.textContent = '参与者可以直接发言，也可以用 @角色名 让特定角色回复';
+      roleHint.classList.remove('moderator-hint');
+    }
+  });
 
-    // Handle user role selection change
-    userRoleSelect.addEventListener('change', () => {
-        const role = userRoleSelect.value;
-        if (role === 'host') {
-            roleHint.textContent = '⚠️ 选择「主持人」时，你可以直接发言，也可以用@角色名让角色回复';
-            roleHint.classList.add('moderator-hint');
-        } else if (role === 'observer') {
-            roleHint.textContent = '👁️ 旁观者模式：只能观看，不能发言';
-            roleHint.classList.remove('moderator-hint');
-        } else {
-            roleHint.textContent = '🎭 选择「参与者」时，你可以直接发言，也可以用@角色名让角色回复';
-            roleHint.classList.remove('moderator-hint');
-        }
+  topicForm.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    currentTopic = topicInput.value.trim();
+    if (!currentTopic) return;
+
+    errorMessage.classList.remove('active');
+    errorMessage.textContent = '';
+    selectedCharacters = [];
+    charactersGrid.innerHTML = '';
+    charactersSection.classList.remove('active');
+    btnStart.classList.remove('active');
+
+    btnGetChars.disabled = true;
+    loadingIndicator.classList.add('active');
+
+    try {
+      const response = await fetch('/roundtable/api/suggestions/', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ topic: currentTopic })
+      });
+      if (!response.ok) throw new Error('服务器错误: ' + response.status);
+      const data = await response.json();
+      if (data.error) throw new Error(data.error);
+      displayCharacters(data.characters);
+    } catch (error) {
+      errorMessage.textContent = error.message || '获取嘉宾失败，请稍后再试';
+      errorMessage.classList.add('active');
+    } finally {
+      btnGetChars.disabled = false;
+      loadingIndicator.classList.remove('active');
+    }
+  });
+
+  function displayCharacters(characters) {
+    charactersGrid.innerHTML = characters.map((char, idx) => `
+      <div class="character-card" data-index="${idx}">
+        <div class="char-checkbox">✓</div>
+        <div class="char-name">${escapeHtml(char.name)}</div>
+        <div class="char-era">${escapeHtml(char.era)}</div>
+        <div class="char-reason">${escapeHtml(char.reason)}</div>
+      </div>
+    `).join('');
+
+    document.querySelectorAll('.character-card').forEach(card => {
+      card.addEventListener('click', () => toggleCharacter(card, characters[card.dataset.index]));
     });
 
-    topicForm.addEventListener('submit', async (e) => {
-        e.preventDefault();
-        currentTopic = topicInput.value.trim();
+    charactersSection.classList.add('active');
+  }
 
-        if (!currentTopic) return;
+  function toggleCharacter(card, character) {
+    const idx = selectedCharacters.findIndex(c => c.name === character.name);
+    if (idx >= 0) {
+      selectedCharacters.splice(idx, 1);
+      card.classList.remove('selected');
+    } else if (selectedCharacters.length < MAX_SELECT) {
+      selectedCharacters.push(character);
+      card.classList.add('selected');
+    }
+    updateSelectionUI();
+  }
 
-        // Reset state
-        errorMessage.classList.remove('active');
-        errorMessage.textContent = '';
-        selectedCharacters = [];
-        charactersGrid.innerHTML = '';
-        charactersSection.classList.remove('active');
-        btnStart.classList.remove('active');
+  function updateSelectionUI() {
+    const count = selectedCharacters.length;
+    selectedCount.textContent = count;
+    if (count >= MIN_SELECT && count <= MAX_SELECT) {
+      btnStart.classList.add('active');
+      btnStart.disabled = false;
+    } else {
+      btnStart.classList.remove('active');
+      btnStart.disabled = true;
+    }
+  }
 
-        // Start timing
-        if (isDebug) startTime = Date.now();
-
-        // Show loading
-        btnGetChars.disabled = true;
-        loadingIndicator.classList.add('active');
-
-        try {
-            const response = await fetch('/roundtable/api/suggestions/', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ topic: currentTopic })
-            });
-
-            if (!response.ok) throw new Error('服务器错误: ' + response.status);
-            const data = await response.json();
-
-            if (data.error) {
-                throw new Error(data.error);
-            }
-
-            // Display characters
-            displayCharacters(data.characters);
-
-            // DEBUG: Show timing
-            if (isDebug && startTime) {
-                const elapsed = ((Date.now() - startTime) / 1000).toFixed(2);
-                console.log(`[DEBUG] 获取嘉宾耗时: ${elapsed}秒`);
-                // Show timing in UI (hidden in production)
-                const timingInfo = document.createElement('div');
-                timingInfo.style.cssText = 'text-align:center;color:#888;font-size:12px;margin-top:8px;';
-                timingInfo.textContent = `获取嘉宾耗时: ${elapsed}秒`;
-                charactersSection.querySelector('.section-title').appendChild(timingInfo);
-            }
-        } catch (error) {
-            errorMessage.textContent = error.message || '获取嘉宾失败，请稍后再试';
-            errorMessage.classList.add('active');
-        } finally {
-            btnGetChars.disabled = false;
-            loadingIndicator.classList.remove('active');
-        }
+  btnStart.addEventListener('click', () => {
+    if (selectedCharacters.length < MIN_SELECT) return;
+    const params = new URLSearchParams({
+      topic: currentTopic,
+      characters: JSON.stringify(selectedCharacters),
+      user_role: userRoleSelect.value
     });
+    window.location.href = '/roundtable/setup/?' + params.toString();
+  });
 
-    function displayCharacters(characters) {
-        charactersGrid.innerHTML = characters.map((char, idx) => `
-            <div class="character-card" data-index="${idx}">
-                <div class="char-checkbox">✓</div>
-                <div class="char-name">${escapeHtml(char.name)}</div>
-                <div class="char-era">${escapeHtml(char.era)}</div>
-                <div class="char-reason">${escapeHtml(char.reason)}</div>
-            </div>
-        `).join('');
+  function escapeHtml(text) {
+    const div = document.createElement('div');
+    div.textContent = text;
+    return div.innerHTML;
+  }
 
-        // Add click handlers
-        document.querySelectorAll('.character-card').forEach(card => {
-            card.addEventListener('click', () => toggleCharacter(card, characters[card.dataset.index]));
-        });
+  // ── History ──
+  const historyList = document.getElementById('history-list');
 
-        charactersSection.classList.add('active');
+  async function loadHistory() {
+    try {
+      const response = await fetch('/roundtable/api/history/');
+      if (!response.ok) throw new Error();
+      const data = await response.json();
+
+      if (!data.history || data.history.length === 0) {
+        historyList.innerHTML = '<div class="history-empty">暂无历史会谈</div>';
+        return;
+      }
+
+      historyList.innerHTML = data.history.map(item => `
+        <div class="history-item" data-id="${item.id}">
+          <div class="history-topic">${escapeHtml(item.topic)}</div>
+          <div class="history-meta">
+            <span class="history-status ${item.status}">${item.status === 'active' ? '进行中' : '已结束'}</span>
+            <span>${item.current_round}/${item.max_rounds}轮</span>
+            <span>${item.created_at}</span>
+          </div>
+          <div class="history-characters">${escapeHtml(item.character_names)}</div>
+          <div class="history-actions">
+            <button class="btn-view" onclick="viewDiscussion(${item.id})">查看</button>
+            <button class="btn-restart" onclick="restartDiscussion(${item.id}, this)">重新开始</button>
+          </div>
+        </div>
+      `).join('');
+    } catch {
+      historyList.innerHTML = '<div class="history-empty">加载失败</div>';
     }
+  }
 
-    function toggleCharacter(card, character) {
-        const idx = selectedCharacters.findIndex(c => c.name === character.name);
+  function viewDiscussion(id) {
+    window.location.href = `/roundtable/d/${id}/`;
+  }
 
-        if (idx >= 0) {
-            // Deselect
-            selectedCharacters.splice(idx, 1);
-            card.classList.remove('selected');
-        } else if (selectedCharacters.length < MAX_SELECT) {
-            // Select
-            selectedCharacters.push(character);
-            card.classList.add('selected');
-        }
-
-        updateSelectionUI();
+  async function restartDiscussion(id, btn) {
+    btn.disabled = true;
+    btn.textContent = '创建中…';
+    try {
+      const response = await fetch(`/roundtable/api/restart/${id}/`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' }
+      });
+      if (!response.ok) throw new Error('服务器错误: ' + response.status);
+      const data = await response.json();
+      if (data.error) throw new Error(data.error);
+      window.location.href = `/roundtable/d/${data.new_discussion_id}/`;
+    } catch (error) {
+      alert('重新开始失败: ' + error.message);
+      btn.disabled = false;
+      btn.textContent = '重新开始';
     }
+  }
 
-    function updateSelectionUI() {
-        const count = selectedCharacters.length;
-        selectedCount.textContent = count;
-
-        if (count >= MIN_SELECT && count <= MAX_SELECT) {
-            btnStart.classList.add('active');
-            btnStart.disabled = false;
-        } else {
-            btnStart.classList.remove('active');
-            btnStart.disabled = true;
-        }
-    }
-
-    btnStart.addEventListener('click', () => {
-        if (selectedCharacters.length < MIN_SELECT) return;
-        // Navigate to setup page with selected characters and user role
-        const params = new URLSearchParams({
-            topic: currentTopic,
-            characters: JSON.stringify(selectedCharacters),
-            user_role: userRoleSelect.value
-        });
-        window.location.href = '/roundtable/setup/?' + params.toString();
-    });
-
-    function escapeHtml(text) {
-        const div = document.createElement('div');
-        div.textContent = text;
-        return div.innerHTML;
-    }
-
-    // History Section
-    const historySection = document.getElementById('history-section');
-    const historyList = document.getElementById('history-list');
-
-    async function loadHistory() {
-        try {
-            const response = await fetch('/roundtable/api/history/');
-            if (!response.ok) throw new Error('服务器错误: ' + response.status);
-            const data = await response.json();
-
-            if (!data.history || data.history.length === 0) {
-                historyList.innerHTML = '<div class="history-empty">暂无历史会谈</div>';
-                return;
-            }
-
-            historyList.innerHTML = data.history.map(item => `
-                <div class="history-item" data-id="${item.id}">
-                    <div class="history-topic">${escapeHtml(item.topic)}</div>
-                    <div class="history-meta">
-                        <span class="history-status ${item.status}">${item.status === 'active' ? '进行中' : '已结束'}</span>
-                        <span>${item.current_round}/${item.max_rounds}轮</span>
-                        <span>${item.created_at}</span>
-                    </div>
-                    <div class="history-characters">${escapeHtml(item.character_names)}</div>
-                    <div class="history-actions">
-                        <button class="btn-view" onclick="viewDiscussion(${item.id})">查看</button>
-                        <button class="btn-restart" onclick="restartDiscussion(${item.id}, this)">重新开始</button>
-                    </div>
-                </div>
-            `).join('');
-        } catch (error) {
-            historyList.innerHTML = '<div class="history-empty">加载失败</div>';
-        }
-    }
-
-    function viewDiscussion(id) {
-        window.location.href = `/roundtable/d/${id}/`;
-    }
-
-    async function restartDiscussion(id, btn) {
-        btn.disabled = true;
-        btn.textContent = '创建中...';
-
-        try {
-            const response = await fetch(`/roundtable/api/restart/${id}/`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' }
-            });
-            if (!response.ok) throw new Error('服务器错误: ' + response.status);
-            const data = await response.json();
-
-            if (data.error) {
-                throw new Error(data.error);
-            }
-
-            // 跳转到新讨论
-            window.location.href = `/roundtable/d/${data.new_discussion_id}/`;
-        } catch (error) {
-            alert('重新开始失败: ' + error.message);
-            btn.disabled = false;
-            btn.textContent = '重新开始';
-        }
-    }
-
-    // Load history on page load
-    loadHistory();
+  loadHistory();
 </script>
 {% endblock %}

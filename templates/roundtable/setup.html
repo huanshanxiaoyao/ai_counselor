@@ -1,728 +1,950 @@
 {% extends 'common/base.html' %}
 {% load static %}
 
-{% block title %}角色配置 - 圆桌会谈{% endblock %}
+{% block title %}召集嘉宾 - 圆桌会谈{% endblock %}
 
 {% block extra_css %}
 <style>
-    .setup-container {
-        max-width: 900px;
-        margin: 0 auto;
-    }
+@import url('https://fonts.googleapis.com/css2?family=Noto+Serif+SC:wght@300;400;600;700&display=swap');
 
-    .page-header {
-        text-align: center;
-        margin-bottom: 30px;
-    }
+/* ── design tokens (mirrors index.html) ── */
+:root {
+  --gold:        #c8a845;
+  --gold-light:  #e5c96a;
+  --gold-dim:    rgba(200,168,69,0.18);
+  --gold-border: rgba(200,168,69,0.38);
+  --surface:     rgba(255,255,255,0.10);
+  --surface-2:   rgba(255,255,255,0.15);
+  --text:        #ede5d0;
+  --text-bright: #f5edd8;
+  --muted:       #c8bfad;
+  --label:       #d4c898;
+  --red:         #d96060;
+  --green:       #7ec880;
+}
 
-    .page-header h1 {
-        font-size: 1.8rem;
-        margin-bottom: 8px;
-        color: #1a1a2e;
-    }
+/* ── page wrapper ── */
+.setup-page {
+  max-width: 820px;
+  margin: 0 auto;
+  padding: 0 20px 80px;
+  font-family: 'Noto Serif SC', 'Songti SC', 'STSong', serif;
+}
 
-    .topic-badge {
-        display: inline-block;
-        background: #fff3e0;
-        border: 1px solid #ffcc80;
-        color: #e65100;
-        padding: 8px 20px;
-        border-radius: 20px;
-        font-size: 0.95rem;
-    }
+/* ── header ── */
+.setup-hero {
+  text-align: center;
+  padding: 44px 0 36px;
+}
 
-    .btn-configure {
-        width: 100%;
-        padding: 16px;
-        background: linear-gradient(135deg, #ff6b6b 0%, #ffa500 100%);
-        color: white;
-        border: none;
-        border-radius: 8px;
-        font-size: 1rem;
-        font-weight: 600;
-        cursor: pointer;
-        transition: transform 0.2s, box-shadow 0.2s;
-        margin-bottom: 30px;
-    }
+.setup-hero h1 {
+  font-size: 2rem;
+  font-weight: 700;
+  letter-spacing: 0.16em;
+  color: #e8d9b0;
+  text-shadow: 0 0 36px rgba(200,168,69,0.50), 0 2px 8px rgba(0,0,0,0.55);
+  margin-bottom: 18px;
+}
 
-    .btn-configure:hover:not(:disabled) {
-        transform: translateY(-2px);
-        box-shadow: 0 8px 25px rgba(255, 107, 107, 0.3);
-    }
+.hero-meta {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
 
-    .btn-configure:disabled {
-        opacity: 0.6;
-        cursor: not-allowed;
-    }
+.topic-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background: rgba(200,168,69,0.14);
+  border: 1px solid var(--gold-border);
+  color: var(--gold-light);
+  padding: 6px 16px;
+  border-radius: 20px;
+  font-size: 0.92rem;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+}
 
-    .loading-section {
-        display: none;
-        text-align: center;
-        padding: 60px 20px;
-    }
+.topic-pill .pill-icon {
+  font-size: 0.8rem;
+  opacity: 0.8;
+}
 
-    .loading-section.active {
-        display: block;
-    }
+.role-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 5px 13px;
+  border-radius: 20px;
+  font-size: 0.82rem;
+  font-weight: 600;
+  letter-spacing: 0.03em;
+}
 
-    .loading-spinner {
-        width: 56px;
-        height: 56px;
-        border: 4px solid rgba(255, 107, 107, 0.2);
-        border-top-color: #ff6b6b;
-        border-radius: 50%;
-        animation: spin 1s linear infinite;
-        margin: 0 auto 20px;
-    }
+.role-pill.host     { background: rgba(200,168,69,0.16); border: 1px solid rgba(200,168,69,0.40); color: var(--gold-light); }
+.role-pill.observer { background: rgba(100,149,237,0.15); border: 1px solid rgba(100,149,237,0.38); color: #9ab8f0; }
+.role-pill.player   { background: rgba(126,200,128,0.14); border: 1px solid rgba(126,200,128,0.36); color: #a8dba8; }
 
-    .loading-text {
-        color: #333;
-        font-size: 1rem;
-    }
+.hero-rule {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin: 28px auto 0;
+  max-width: 200px;
+}
+.hero-rule::before, .hero-rule::after {
+  content: '';
+  flex: 1;
+  height: 1px;
+}
+.hero-rule::before { background: linear-gradient(90deg, transparent, var(--gold)); }
+.hero-rule::after  { background: linear-gradient(90deg, var(--gold), transparent); }
+.hero-rule span { font-size: 0.5rem; color: var(--gold); letter-spacing: 0.12em; }
 
-    .loading-progress {
-        color: #666;
-        font-size: 0.85rem;
-        margin-top: 8px;
-    }
+/* ── action card (configure / settings) ── */
+.action-card {
+  background: var(--surface);
+  border: 1px solid var(--gold-border);
+  border-radius: 14px;
+  padding: 30px 36px;
+  position: relative;
+  overflow: hidden;
+  margin-bottom: 20px;
+}
+.action-card::before {
+  content: '';
+  position: absolute;
+  top: 0; left: 0; right: 0;
+  height: 1px;
+  background: linear-gradient(90deg, transparent, var(--gold) 50%, transparent);
+}
 
-    .timing-info {
-        color: #888;
-        font-size: 0.8rem;
-        margin-top: 4px;
-    }
+.action-card-label {
+  font-size: 0.66rem;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--label);
+  font-weight: 600;
+  margin-bottom: 18px;
+}
 
-    @keyframes spin {
-        to { transform: rotate(360deg); }
-    }
+/* ── configure button ── */
+.btn-configure {
+  width: 100%;
+  padding: 14px;
+  background: transparent;
+  border: 1px solid var(--gold-border);
+  border-radius: 8px;
+  color: var(--gold-light);
+  font-size: 1rem;
+  font-weight: 600;
+  font-family: inherit;
+  letter-spacing: 0.08em;
+  cursor: pointer;
+  transition: background 0.22s, border-color 0.22s, box-shadow 0.22s;
+}
+.btn-configure:hover:not(:disabled) {
+  background: var(--gold-dim);
+  border-color: rgba(200,168,69,0.55);
+  box-shadow: 0 0 24px rgba(200,168,69,0.14);
+}
+.btn-configure:disabled {
+  opacity: 0.38;
+  cursor: not-allowed;
+}
 
-    .characters-section {
-        display: none;
-    }
+/* ── error ── */
+.error-msg {
+  display: none;
+  background: rgba(217,96,96,0.12);
+  border: 1px solid rgba(217,96,96,0.32);
+  border-radius: 8px;
+  padding: 13px 16px;
+  margin-bottom: 18px;
+  color: #e88080;
+  font-size: 0.88rem;
+}
+.error-msg.active { display: block; }
 
-    .characters-section.active {
-        display: block;
-    }
+/* ── loading ── */
+.loading-section {
+  display: none;
+  text-align: center;
+  padding: 48px 0;
+}
+.loading-section.active { display: block; }
 
-    .section-title {
-        font-size: 1.2rem;
-        color: #1a1a2e;
-        margin-bottom: 20px;
-        text-align: center;
-    }
+.spinner-ring {
+  width: 48px;
+  height: 48px;
+  border: 2px solid rgba(200,168,69,0.18);
+  border-top-color: var(--gold);
+  border-radius: 50%;
+  animation: rt-spin 0.9s linear infinite;
+  margin: 0 auto 18px;
+}
+@keyframes rt-spin { to { transform: rotate(360deg); } }
 
-    .character-config-card {
-        background: #ffffff;
-        border: 2px solid #e0e0e0;
-        border-radius: 12px;
-        padding: 0;
-        margin-bottom: 16px;
-        overflow: hidden;
-    }
+.loading-text {
+  font-size: 0.95rem;
+  color: var(--text);
+  margin-bottom: 6px;
+}
+.loading-sub {
+  font-size: 0.82rem;
+  color: var(--muted);
+}
 
-    .character-config-card .char-header {
-        display: flex;
-        align-items: center;
-        gap: 12px;
-        padding: 16px 20px;
-        cursor: pointer;
-        background: #fafafa;
-        border-bottom: 1px solid #eee;
-        transition: background 0.2s;
-    }
+/* ── section heading ── */
+.section-head {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  margin-bottom: 20px;
+}
+.section-head::before, .section-head::after {
+  content: '';
+  flex: 1;
+  height: 1px;
+  background: var(--gold-border);
+}
+.section-head span {
+  font-size: 0.68rem;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--label);
+  font-weight: 600;
+  white-space: nowrap;
+}
 
-    .character-config-card .char-header:hover {
-        background: #f0f0f0;
-    }
+/* ── cache summary ── */
+.cache-bar {
+  display: flex;
+  justify-content: center;
+  gap: 16px;
+  margin-bottom: 18px;
+  font-size: 0.8rem;
+  color: var(--muted);
+}
+.cache-bar .hit  { color: var(--green); font-weight: 600; }
+.cache-bar .miss { color: var(--gold);  font-weight: 600; }
+.timing-note {
+  text-align: center;
+  font-size: 0.76rem;
+  color: var(--muted);
+  margin-bottom: 20px;
+}
 
-    .char-avatar {
-        width: 48px;
-        height: 48px;
-        border-radius: 50%;
-        background: linear-gradient(135deg, #4caf50, #8bc34a);
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        font-size: 1.2rem;
-        font-weight: bold;
-        color: white;
-        position: relative;
-    }
+/* ── character cards ── */
+.char-card {
+  background: rgba(255,255,255,0.08);
+  border: 1px solid var(--gold-border);
+  border-radius: 12px;
+  margin-bottom: 12px;
+  overflow: hidden;
+  transition: border-color 0.2s;
+}
+.char-card:hover { border-color: rgba(200,168,69,0.55); }
 
-    .char-avatar .checkmark {
-        position: absolute;
-        bottom: -2px;
-        right: -2px;
-        width: 18px;
-        height: 18px;
-        background: #4caf50;
-        border-radius: 50%;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        font-size: 10px;
-        color: white;
-        border: 2px solid white;
-    }
+.char-header {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 14px 18px;
+  cursor: pointer;
+  user-select: none;
+}
 
-    .char-info {
-        flex: 1;
-    }
+.char-medallion {
+  width: 46px;
+  height: 46px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, rgba(200,168,69,0.35) 0%, rgba(200,168,69,0.12) 100%);
+  border: 1.5px solid var(--gold-border);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1.15rem;
+  font-weight: 700;
+  color: var(--gold-light);
+  flex-shrink: 0;
+  position: relative;
+}
+.char-medallion .check-dot {
+  position: absolute;
+  bottom: -1px;
+  right: -1px;
+  width: 16px;
+  height: 16px;
+  background: var(--green);
+  border-radius: 50%;
+  border: 2px solid #1a1a2e;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 8px;
+  color: #0d1a0d;
+  font-weight: 700;
+}
 
-    .char-info h3 {
-        font-size: 1.1rem;
-        color: #1a1a2e;
-        margin-bottom: 4px;
-    }
+.char-title {
+  flex: 1;
+  min-width: 0;
+}
+.char-title .name {
+  font-size: 1.05rem;
+  font-weight: 700;
+  color: var(--text-bright);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.char-title .era-tag {
+  font-size: 0.78rem;
+  color: var(--muted);
+  margin-top: 2px;
+}
 
-    .char-info .era {
-        font-size: 0.85rem;
-        color: #666;
-    }
+.cache-badge {
+  display: inline-block;
+  padding: 1px 8px;
+  border-radius: 8px;
+  font-size: 0.68rem;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+}
+.cache-badge.hit  { background: rgba(126,200,128,0.16); border: 1px solid rgba(126,200,128,0.35); color: var(--green); }
+.cache-badge.miss { background: rgba(200,168,69,0.16); border: 1px solid var(--gold-border); color: var(--gold-light); }
 
-    .expand-icon {
-        font-size: 1.2rem;
-        color: #999;
-        transition: transform 0.2s;
-    }
+.expand-btn {
+  width: 28px;
+  height: 28px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  border: 1px solid rgba(255,255,255,0.14);
+  color: var(--muted);
+  font-size: 0.75rem;
+  flex-shrink: 0;
+  transition: transform 0.22s, border-color 0.2s, color 0.2s;
+}
+.char-card.expanded .expand-btn {
+  transform: rotate(180deg);
+  border-color: var(--gold-border);
+  color: var(--gold);
+}
 
-    .character-config-card.expanded .expand-icon {
-        transform: rotate(180deg);
-    }
+/* ── LLM selector (always visible, between header and details) ── */
+.llm-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 18px;
+  background: rgba(200,168,69,0.07);
+  border-top: 1px solid rgba(200,168,69,0.20);
+  border-bottom: 1px solid rgba(200,168,69,0.20);
+}
+.llm-row label {
+  font-size: 0.72rem;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--label);
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+.llm-row select {
+  flex: 1;
+  padding: 5px 10px;
+  background: rgba(0,0,0,0.30);
+  border: 1px solid rgba(200,168,69,0.30);
+  border-radius: 6px;
+  font-size: 0.84rem;
+  color: var(--text);
+  font-family: inherit;
+  cursor: pointer;
+  appearance: none;
+  -webkit-appearance: none;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6'%3E%3Cpath d='M0 0l5 6 5-6z' fill='%23c8a845'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 10px center;
+  padding-right: 28px;
+}
+.llm-row select:focus {
+  outline: none;
+  border-color: rgba(200,168,69,0.60);
+  box-shadow: 0 0 0 2px rgba(200,168,69,0.10);
+}
+.llm-row select option { background: #1a1520; color: var(--text); }
 
-    .config-details {
-        display: none;
-        padding: 20px;
-    }
+/* ── expandable details ── */
+.char-details {
+  display: none;
+  padding: 18px 20px 20px;
+  border-top: 1px solid rgba(255,255,255,0.07);
+}
+.char-card.expanded .char-details { display: block; }
 
-    .character-config-card.expanded .config-details {
-        display: block;
-    }
+.detail-item {
+  margin-bottom: 16px;
+}
+.detail-item:last-child { margin-bottom: 0; }
 
-    .config-item {
-        margin-bottom: 16px;
-    }
+.detail-label {
+  font-size: 0.66rem;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--gold);
+  font-weight: 600;
+  margin-bottom: 7px;
+}
 
-    .config-item:last-child {
-        margin-bottom: 0;
-    }
+.detail-text {
+  font-size: 0.9rem;
+  color: var(--text);
+  line-height: 1.65;
+}
 
-    .config-label {
-        font-size: 0.75rem;
-        color: #999;
-        text-transform: uppercase;
-        letter-spacing: 0.5px;
-        margin-bottom: 4px;
-    }
+.viewpoints-wrap {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 7px;
+}
+.vp-tag {
+  background: rgba(200,168,69,0.12);
+  border: 1px solid rgba(200,168,69,0.30);
+  color: var(--text);
+  padding: 3px 11px;
+  border-radius: 10px;
+  font-size: 0.8rem;
+  line-height: 1.5;
+}
 
-    .config-value {
-        font-size: 0.95rem;
-        color: #333;
-        line-height: 1.6;
-    }
+.style-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+  margin-bottom: 10px;
+}
+.style-cell {
+  background: rgba(255,255,255,0.06);
+  border: 1px solid rgba(255,255,255,0.10);
+  border-radius: 8px;
+  padding: 10px 13px;
+}
+.style-cell .cell-label {
+  font-size: 0.68rem;
+  color: var(--muted);
+  margin-bottom: 4px;
+  letter-spacing: 0.06em;
+}
+.style-cell .cell-val {
+  font-size: 0.88rem;
+  color: var(--text);
+}
 
-    .viewpoints-list {
-        display: flex;
-        flex-wrap: wrap;
-        gap: 8px;
-    }
+.catchphrases {
+  font-size: 0.84rem;
+  color: var(--muted);
+  line-height: 1.7;
+}
 
-    .viewpoint-tag {
-        background: #e3f2fd;
-        border: 1px solid #90caf9;
-        color: #1565c0;
-        padding: 4px 12px;
-        border-radius: 12px;
-        font-size: 0.8rem;
-    }
+.constraints-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+}
+.constraint-box {
+  background: rgba(255,255,255,0.05);
+  border-radius: 8px;
+  padding: 11px 13px;
+}
+.constraint-box.can   { border: 1px solid rgba(126,200,128,0.28); }
+.constraint-box.cannot{ border: 1px solid rgba(217,96,96,0.28); }
+.constraint-box .cbox-label {
+  font-size: 0.68rem;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  margin-bottom: 6px;
+}
+.constraint-box.can    .cbox-label { color: var(--green); }
+.constraint-box.cannot .cbox-label { color: #e88080; }
+.constraint-box .cbox-val {
+  font-size: 0.8rem;
+  color: var(--text);
+  line-height: 1.6;
+}
 
-    .language-style {
-        display: flex;
-        gap: 16px;
-        flex-wrap: wrap;
-    }
+.articles-list { display: flex; flex-direction: column; gap: 10px; }
+.article-item {
+  background: rgba(255,255,255,0.05);
+  border: 1px solid rgba(255,255,255,0.10);
+  border-left: 3px solid var(--gold);
+  border-radius: 0 8px 8px 0;
+  padding: 11px 14px;
+}
+.article-title  { font-size: 0.88rem; color: var(--gold-light); font-weight: 600; margin-bottom: 3px; }
+.article-source { font-size: 0.74rem; color: var(--muted); margin-bottom: 6px; }
+.article-content{ font-size: 0.83rem; color: var(--text); line-height: 1.6; }
 
-    .style-item {
-        flex: 1;
-        min-width: 150px;
-        background: #f5f5f5;
-        padding: 10px 14px;
-        border-radius: 8px;
-    }
+/* ── settings box ── */
+.settings-box {
+  background: var(--surface);
+  border: 1px solid var(--gold-border);
+  border-radius: 12px;
+  padding: 22px 28px;
+  margin: 22px 0;
+  position: relative;
+  overflow: hidden;
+}
+.settings-box::before {
+  content: '';
+  position: absolute;
+  top: 0; left: 0; right: 0;
+  height: 1px;
+  background: linear-gradient(90deg, transparent, var(--gold) 50%, transparent);
+}
+.settings-box-label {
+  font-size: 0.66rem;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--label);
+  font-weight: 600;
+  margin-bottom: 16px;
+}
+.settings-row {
+  display: flex;
+  align-items: center;
+  gap: 20px;
+  flex-wrap: wrap;
+}
+.settings-field {
+  flex: 0 0 auto;
+}
+.settings-field label {
+  display: block;
+  font-size: 0.8rem;
+  color: var(--muted);
+  margin-bottom: 7px;
+  letter-spacing: 0.04em;
+}
+.settings-field input[type="number"] {
+  width: 100px;
+  padding: 8px 12px;
+  background: rgba(0,0,0,0.35);
+  border: 1px solid rgba(200,168,69,0.30);
+  border-radius: 7px;
+  font-size: 0.95rem;
+  color: var(--text);
+  font-family: inherit;
+  text-align: center;
+}
+.settings-field input[type="number"]:focus {
+  outline: none;
+  border-color: rgba(200,168,69,0.55);
+}
+.settings-hint {
+  font-size: 0.8rem;
+  color: var(--muted);
+  line-height: 1.65;
+  flex: 1;
+  min-width: 160px;
+}
 
-    .style-item .label {
-        font-size: 0.75rem;
-        color: #666;
-        margin-bottom: 4px;
-    }
+/* ── start button ── */
+.btn-start {
+  display: none;
+  width: 100%;
+  padding: 15px;
+  background: linear-gradient(135deg, #c8a845 0%, #e5c96a 100%);
+  color: #0d0b14;
+  border: none;
+  border-radius: 10px;
+  font-size: 1rem;
+  font-weight: 700;
+  font-family: inherit;
+  letter-spacing: 0.08em;
+  cursor: pointer;
+  transition: transform 0.2s, box-shadow 0.2s;
+}
+.btn-start.active { display: block; }
+.btn-start:hover:not(:disabled) {
+  transform: translateY(-2px);
+  box-shadow: 0 8px 28px rgba(200,168,69,0.32);
+}
+.btn-start:disabled { opacity: 0.40; cursor: not-allowed; }
 
-    .style-item .value {
-        font-size: 0.9rem;
-        color: #333;
-    }
+/* ── refresh link ── */
+.refresh-link {
+  display: flex;
+  justify-content: flex-end;
+  margin-bottom: 20px;
+}
+.refresh-link button {
+  background: transparent;
+  border: 1px solid rgba(255,255,255,0.16);
+  color: var(--muted);
+  padding: 6px 14px;
+  border-radius: 6px;
+  font-size: 0.8rem;
+  font-family: inherit;
+  cursor: pointer;
+  transition: border-color 0.2s, color 0.2s;
+}
+.refresh-link button:hover {
+  border-color: rgba(255,255,255,0.28);
+  color: var(--text);
+}
 
-    .articles-list {
-        display: flex;
-        flex-direction: column;
-        gap: 10px;
-    }
-
-    .article-item {
-        background: #f9f9f9;
-        padding: 12px;
-        border-radius: 8px;
-        border-left: 3px solid #ffa500;
-    }
-
-    .article-title {
-        font-size: 0.9rem;
-        color: #e65100;
-        margin-bottom: 4px;
-    }
-
-    .article-source {
-        font-size: 0.75rem;
-        color: #999;
-        margin-bottom: 6px;
-    }
-
-    .article-content {
-        font-size: 0.85rem;
-        color: #555;
-        line-height: 1.5;
-    }
-
-    .btn-start-discussion {
-        display: none;
-        width: 100%;
-        padding: 16px;
-        background: linear-gradient(135deg, #00d9ff 0%, #00ff88 100%);
-        color: #1a1a2e;
-        border: none;
-        border-radius: 8px;
-        font-size: 1rem;
-        font-weight: 600;
-        cursor: pointer;
-        transition: transform 0.2s, box-shadow 0.2s;
-        margin-top: 20px;
-    }
-
-    .btn-start-discussion.active {
-        display: block;
-    }
-
-    .btn-start-discussion:hover {
-        transform: translateY(-2px);
-        box-shadow: 0 8px 25px rgba(0, 217, 255, 0.3);
-    }
-
-    .cache-badge {
-        display: inline-block;
-        padding: 2px 10px;
-        border-radius: 10px;
-        font-size: 0.75rem;
-        margin-left: 8px;
-        vertical-align: middle;
-    }
-
-    .cache-badge.hit {
-        background: #e8f5e9;
-        border: 1px solid #a5d6a7;
-        color: #2e7d32;
-    }
-
-    .cache-badge.miss {
-        background: #fff3e0;
-        border: 1px solid #ffcc80;
-        color: #e65100;
-    }
-
-    .cache-summary {
-        text-align: center;
-        margin-bottom: 16px;
-        padding: 12px;
-        background: #f5f5f5;
-        border-radius: 8px;
-        font-size: 0.9rem;
-        color: #333;
-    }
-
-    .cache-summary .hit-count {
-        color: #2e7d32;
-        font-weight: 600;
-    }
-
-    .cache-summary .miss-count {
-        color: #e65100;
-        font-weight: 600;
-    }
-
-    .error-message {
-        display: none;
-        background: #ffebee;
-        border: 1px solid #ef9a9a;
-        border-radius: 8px;
-        padding: 16px;
-        margin-bottom: 20px;
-        color: #c62828;
-        text-align: center;
-    }
-
-    .error-message.active {
-        display: block;
-    }
-
-    .temporal-constraints {
-        display: grid;
-        grid-template-columns: 1fr 1fr;
-        gap: 12px;
-    }
-
-    .constraint-box {
-        background: #f5f5f5;
-        padding: 10px;
-        border-radius: 8px;
-    }
-
-    .constraint-box.can .label {
-        color: #2e7d32;
-    }
-
-    .constraint-box.cannot .label {
-        color: #c62828;
-    }
+/* ── characters section hidden/shown ── */
+.chars-section { display: none; }
+.chars-section.active { display: block; animation: s-fadein 0.3s ease; }
+@keyframes s-fadein {
+  from { opacity: 0; transform: translateY(8px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
 </style>
 {% endblock %}
 
 {% block content %}
-<div class="setup-container">
-    <div class="page-header">
-        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;">
-            <h1 style="margin:0;">角色配置</h1>
-            <button onclick="location.reload()" style="padding:8px 16px;background:#f5f5f5;border:1px solid #ddd;border-radius:6px;cursor:pointer;font-size:0.85rem;">🔄 刷新页面</button>
+<div class="setup-page">
+
+  <!-- Hero -->
+  <div class="setup-hero">
+    <h1>召集嘉宾</h1>
+    <div class="hero-meta">
+      <span class="topic-pill">
+        <span class="pill-icon">◈</span>{{ topic }}
+      </span>
+      {% if user_role == 'host' %}
+      <span class="role-pill host">🎤 主持人</span>
+      {% elif user_role == 'observer' %}
+      <span class="role-pill observer">👁 旁观者</span>
+      {% else %}
+      <span class="role-pill player">🎭 参与者</span>
+      {% endif %}
+    </div>
+    <div class="hero-rule"><span>✦</span></div>
+  </div>
+
+  <!-- Refresh -->
+  <div class="refresh-link">
+    <button onclick="location.reload()">↺ 刷新页面</button>
+  </div>
+
+  <!-- Error -->
+  <div id="error-msg" class="error-msg"></div>
+
+  <!-- Configure card -->
+  <div class="action-card">
+    <div class="action-card-label">第一步 · 生成角色设定</div>
+    <button id="btn-configure" class="btn-configure">开始配置角色</button>
+  </div>
+
+  <!-- Loading -->
+  <div id="loading-section" class="loading-section">
+    <div class="spinner-ring"></div>
+    <div class="loading-text">正在为每位嘉宾生成详细设定…</div>
+    <div class="loading-sub" id="loading-progress">准备中…</div>
+  </div>
+
+  <!-- Characters section -->
+  <div id="chars-section" class="chars-section">
+
+    <!-- Cache summary + timing -->
+    <div id="cache-bar" class="cache-bar" style="display:none;"></div>
+    <div id="timing-note" class="timing-note"></div>
+
+    <!-- Section heading -->
+    <div class="section-head"><span>嘉宾阵容</span></div>
+
+    <!-- Cards injected here -->
+    <div id="chars-list"></div>
+
+    <!-- Discussion settings -->
+    <div id="settings-box" class="settings-box" style="display:none;">
+      <div class="settings-box-label">第二步 · 讨论设置</div>
+      <div class="settings-row">
+        <div class="settings-field">
+          <label for="max-rounds-input">最大讨论轮次</label>
+          <input type="number" id="max-rounds-input" value="30" min="5" max="200" step="5">
         </div>
-        <div style="display:flex;gap:12px;flex-wrap:wrap;margin-bottom:8px;">
-            <div class="topic-badge">话题：{{ topic }}</div>
-            {% if user_role == 'host' %}
-            <div style="background:#fff3e0;border:1px solid #ffcc80;color:#e65100;padding:6px 14px;border-radius:16px;font-size:0.85rem;">🎤 你扮演主持人</div>
-            {% elif user_role == 'observer' %}
-            <div style="background:#e3f2fd;border:1px solid #90caf9;color:#1565c0;padding:6px 14px;border-radius:16px;font-size:0.85rem;">👁️ 旁观者模式</div>
-            {% else %}
-            <div style="background:#e8f5e9;border:1px solid #a5d6a7;color:#2e7d32;padding:6px 14px;border-radius:16px;font-size:0.85rem;">🎭 参与者</div>
-            {% endif %}
+        <div class="settings-hint">
+          每轮包含一位嘉宾的发言。<br>推荐 20–50 轮，约需 5–15 分钟。
         </div>
+      </div>
     </div>
 
-    <div id="error-message" class="error-message"></div>
+    <!-- Start button -->
+    <button id="btn-start" class="btn-start">开始讨论</button>
 
-    <button id="btn-configure" class="btn-configure">
-        开始配置角色
-    </button>
+  </div><!-- /chars-section -->
 
-    <div id="loading-section" class="loading-section">
-        <div class="loading-spinner"></div>
-        <div class="loading-text">正在为每位角色生成详细配置...</div>
-        <div class="loading-progress" id="loading-progress">准备中...</div>
-    </div>
-
-    <div id="characters-section" class="characters-section">
-        <h2 class="section-title">角色配置完成</h2>
-        <div id="timing-display" class="timing-info" style="text-align:center;margin-bottom:16px;"></div>
-        <div id="characters-list"></div>
-
-        <button id="btn-start" class="btn-start-discussion">
-            开始讨论
-        </button>
-    </div>
-</div>
+</div><!-- /setup-page -->
 {% endblock %}
 
 {% block extra_js %}
 <script>
-    const topic = "{{ topic|escapejs }}";
-    const characters = JSON.parse("{{ characters_json|escapejs }}");
-    const userRole = "{{ user_role }}";
+  const topic      = "{{ topic|escapejs }}";
+  const characters = JSON.parse("{{ characters_json|escapejs }}");
+  const userRole   = "{{ user_role }}";
+  const llmOptions = JSON.parse("{{ llm_options_json|escapejs }}");
+  const defaultLlmLabel = "{{ default_llm_label|escapejs }}";
 
-    const btnConfigure = document.getElementById('btn-configure');
-    const loadingSection = document.getElementById('loading-section');
-    const loadingProgress = document.getElementById('loading-progress');
-    const charactersSection = document.getElementById('characters-section');
-    const charactersList = document.getElementById('characters-list');
-    const btnStart = document.getElementById('btn-start');
-    const errorMessage = document.getElementById('error-message');
-    const timingDisplay = document.getElementById('timing-display');
+  const btnConfigure   = document.getElementById('btn-configure');
+  const loadingSection = document.getElementById('loading-section');
+  const loadingProgress= document.getElementById('loading-progress');
+  const charsSection   = document.getElementById('chars-section');
+  const charsList      = document.getElementById('chars-list');
+  const btnStart       = document.getElementById('btn-start');
+  const errorMsg       = document.getElementById('error-msg');
+  const timingNote     = document.getElementById('timing-note');
+  const cacheBar       = document.getElementById('cache-bar');
 
-    let configuredCharacters = [];
-    let configureStartTime = null;
+  let configuredCharacters = [];
+  let configureStartTime   = null;
 
-    btnConfigure.addEventListener('click', async () => {
-        errorMessage.classList.remove('active');
-        btnConfigure.disabled = true;
-        loadingSection.classList.add('active');
-        charactersSection.classList.remove('active');
-        configureStartTime = Date.now();
+  // ── configure ──
+  btnConfigure.addEventListener('click', async () => {
+    errorMsg.classList.remove('active');
+    btnConfigure.disabled = true;
+    loadingSection.classList.add('active');
+    charsSection.classList.remove('active');
+    configureStartTime = Date.now();
 
-        try {
-            loadingProgress.textContent = `正在配置 ${characters.length} 个角色...`;
+    try {
+      loadingProgress.textContent = `正在并行配置 ${characters.length} 位嘉宾…`;
 
-            console.log('[DEBUG] Sending configure request with:', { topic, characters });
+      const response = await fetch('/roundtable/api/configure/', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ topic, characters })
+      });
 
-            const response = await fetch('/roundtable/api/configure/', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ topic, characters })
-            });
+      const data = await response.json();
+      if (data.error) throw new Error(data.error);
+      if (!data.characters || data.characters.length === 0)
+        throw new Error('角色配置返回空数据，请重试');
 
-            const data = await response.json();
+      const elapsed = ((Date.now() - configureStartTime) / 1000).toFixed(1);
+      timingNote.textContent = `配置耗时 ${elapsed} 秒`;
 
-            console.log('[DEBUG] Configure response:', data);
+      configuredCharacters = data.characters;
+      displayCharacters(configuredCharacters);
 
-            if (data.error) {
-                throw new Error(data.error);
-            }
+    } catch (error) {
+      errorMsg.textContent = error.message || '配置失败，请稍后重试';
+      errorMsg.classList.add('active');
+    } finally {
+      btnConfigure.disabled = false;
+      loadingSection.classList.remove('active');
+    }
+  });
 
-            if (!data.characters || data.characters.length === 0) {
-                throw new Error('角色配置返回空数据，请重试');
-            }
+  // ── display characters ──
+  function displayCharacters(chars) {
+    if (!chars || !Array.isArray(chars) || chars.length === 0) {
+      errorMsg.textContent = '角色数据异常，请刷新重试';
+      errorMsg.classList.add('active');
+      return;
+    }
 
-            const elapsed = ((Date.now() - configureStartTime) / 1000).toFixed(2);
-            timingDisplay.textContent = `配置耗时: ${elapsed}秒`;
+    const hitCount  = chars.filter(c => c && c._cached).length;
+    const missCount = chars.filter(c => c && !c._cached).length;
 
-            configuredCharacters = data.characters;
-            console.log('[DEBUG] configuredCharacters set to:', configuredCharacters);
-            displayCharacters(configuredCharacters);
-        } catch (error) {
-            console.error('[DEBUG] Configure error:', error);
-            errorMessage.textContent = error.message || '配置失败，请稍后再试';
-            errorMessage.classList.add('active');
-        } finally {
-            btnConfigure.disabled = false;
-            loadingSection.classList.remove('active');
-        }
-    });
+    if (hitCount + missCount > 0) {
+      cacheBar.innerHTML =
+        `话题设定缓存：<span class="hit">${hitCount} 命中</span> / <span class="miss">${missCount} 实时生成</span>`;
+      cacheBar.style.display = 'flex';
+    }
 
-    function displayCharacters(chars) {
-        console.log('[DEBUG] displayCharacters called with:', chars);
+    const llmSelectHtml = `
+      <div class="llm-row" onclick="event.stopPropagation()">
+        <label for="llm-select-IDX">驱动模型</label>
+        <select id="llm-select-IDX" data-char-index="IDX">
+          <option value="">默认 (${escapeHtml(defaultLlmLabel)})</option>
+          ${llmOptions.map(opt =>
+            `<option value="${escapeHtml(opt.value)}">${escapeHtml(opt.label)}</option>`
+          ).join('')}
+        </select>
+      </div>`;
 
-        if (!chars || !Array.isArray(chars)) {
-            console.error('[DEBUG] Invalid chars data:', chars);
-            errorMessage.textContent = '角色数据格式错误，请刷新页面重试';
-            errorMessage.classList.add('active');
-            return;
-        }
+    charsList.innerHTML = chars.map((char, idx) => {
+      const cachedBadge = char._cached
+        ? `<span class="cache-badge hit">缓存</span>`
+        : `<span class="cache-badge miss">实时</span>`;
 
-        if (chars.length === 0) {
-            console.error('[DEBUG] No characters to display');
-            errorMessage.textContent = '没有配置好的角色，请重试';
-            errorMessage.classList.add('active');
-            return;
-        }
+      const vpTags = Object.entries(char.viewpoints || {}).map(([k, v]) =>
+        `<span class="vp-tag">${escapeHtml(k)}：${escapeHtml(v)}</span>`
+      ).join('');
 
-        // 计算缓存命中统计
-        const hitCount = chars.filter(c => c && c._cached).length;
-        const missCount = chars.filter(c => c && !c._cached).length;
+      const catchphrases = (char.language_style?.catchphrases || []).join('　');
 
-        // 显示缓存统计
-        if (hitCount > 0 || missCount > 0) {
-            const summaryHtml = `
-                <div class="cache-summary">
-                    话题设定缓存：<span class="hit-count">${hitCount} 命中</span> / <span class="miss-count">${missCount} 实时生成</span>
-                </div>
-            `;
-            charactersList.innerHTML = summaryHtml;
-        } else {
-            charactersList.innerHTML = '';
-        }
-
-        charactersList.innerHTML += chars.map((char, idx) => `
-            <div class="character-config-card" data-index="${idx}">
-                <div class="char-header" onclick="toggleCard(${idx})">
-                    <div class="char-avatar">
-                        ${char.name.charAt(0)}
-                        <span class="checkmark">✓</span>
-                    </div>
-                    <div class="char-info">
-                        <h3>${escapeHtml(char.name)}${char._cached ? '<span class="cache-badge hit">缓存命中</span>' : '<span class="cache-badge miss">实时生成</span>'}</h3>
-                        <div class="era">${escapeHtml(char.era)}</div>
-                    </div>
-                    <span class="expand-icon">▼</span>
-                </div>
-
-                <div class="config-details">
-                    <div class="config-item">
-                        <div class="config-label">简介</div>
-                        <div class="config-value">${escapeHtml(char.bio || '暂无')}</div>
-                    </div>
-
-                    <div class="config-item">
-                        <div class="config-label">背景</div>
-                        <div class="config-value">${escapeHtml(char.background || '暂无')}</div>
-                    </div>
-
-                    <div class="config-item">
-                        <div class="config-label">核心观点</div>
-                        <div class="viewpoints-list">
-                            ${Object.entries(char.viewpoints || {}).map(([key, value]) =>
-                                `<span class="viewpoint-tag">${escapeHtml(key)}: ${escapeHtml(value)}</span>`
-                            ).join('')}
-                        </div>
-                    </div>
-
-                    <div class="config-item">
-                        <div class="config-label">语言风格</div>
-                        <div class="language-style">
-                            <div class="style-item">
-                                <div class="label">语气</div>
-                                <div class="value">${escapeHtml(char.language_style?.tone || '中性')}</div>
-                            </div>
-                            <div class="style-item">
-                                <div class="label">说话习惯</div>
-                                <div class="value">${escapeHtml(char.language_style?.speaking_habits || '一般')}</div>
-                            </div>
-                        </div>
-                        <div style="margin-top: 8px;">
-                            <div class="label">常用表达</div>
-                            <div style="color: #666; font-size: 0.85rem; margin-top: 4px;">
-                                ${(char.language_style?.catchphrases || []).map(cp => escapeHtml(cp)).join('、')}
-                            </div>
-                        </div>
-                    </div>
-
-                    ${char.temporal_constraints ? `
-                    <div class="config-item">
-                        <div class="config-label">时代边界</div>
-                        <div class="temporal-constraints">
-                            <div class="constraint-box can">
-                                <div class="label">可以讨论</div>
-                                <div class="value" style="font-size: 0.8rem;">${(char.temporal_constraints.can_discuss || []).map(s => escapeHtml(s)).join('、')}</div>
-                            </div>
-                            <div class="constraint-box cannot">
-                                <div class="label">不能讨论</div>
-                                <div class="value" style="font-size: 0.8rem;">${(char.temporal_constraints.cannot_discuss || []).map(s => escapeHtml(s)).join('、')}</div>
-                            </div>
-                        </div>
-                    </div>
-                    ` : ''}
-
-                    ${char.representative_articles?.length ? `
-                    <div class="config-item">
-                        <div class="config-label">代表文章</div>
-                        <div class="articles-list">
-                            ${char.representative_articles.map(article => `
-                                <div class="article-item">
-                                    <div class="article-title">${escapeHtml(article.title || '')}</div>
-                                    ${article.source ? `<div class="article-source">${escapeHtml(article.source)}</div>` : ''}
-                                    <div class="article-content">${escapeHtml(article.content || '')}</div>
-                                </div>
-                            `).join('')}
-                        </div>
-                    </div>
-                    ` : ''}
-                </div>
+      const constraintsHtml = char.temporal_constraints ? `
+        <div class="detail-item">
+          <div class="detail-label">时代边界</div>
+          <div class="constraints-grid">
+            <div class="constraint-box can">
+              <div class="cbox-label">可讨论</div>
+              <div class="cbox-val">${(char.temporal_constraints.can_discuss || []).map(escapeHtml).join('、')}</div>
             </div>
-        `).join('');
+            <div class="constraint-box cannot">
+              <div class="cbox-label">不可讨论</div>
+              <div class="cbox-val">${(char.temporal_constraints.cannot_discuss || []).map(escapeHtml).join('、')}</div>
+            </div>
+          </div>
+        </div>` : '';
 
-        console.log('[DEBUG] Characters HTML rendered, showing section');
-        charactersSection.classList.add('active');
-        btnStart.classList.add('active');
-        console.log('[DEBUG] charactersSection active:', charactersSection.classList.contains('active'));
-        console.log('[DEBUG] btnStart active:', btnStart.classList.contains('active'));
+      const articlesHtml = char.representative_articles?.length ? `
+        <div class="detail-item">
+          <div class="detail-label">代表文章</div>
+          <div class="articles-list">
+            ${char.representative_articles.map(a => `
+              <div class="article-item">
+                <div class="article-title">${escapeHtml(a.title || '')}</div>
+                ${a.source ? `<div class="article-source">${escapeHtml(a.source)}</div>` : ''}
+                <div class="article-content">${escapeHtml(a.content || '')}</div>
+              </div>`).join('')}
+          </div>
+        </div>` : '';
+
+      const llmHtml = llmSelectHtml.replaceAll('IDX', String(idx));
+
+      return `
+        <div class="char-card" data-index="${idx}">
+          <div class="char-header" onclick="toggleCard(${idx})">
+            <div class="char-medallion">
+              ${escapeHtml(char.name.charAt(0))}
+              <span class="check-dot">✓</span>
+            </div>
+            <div class="char-title">
+              <div class="name">${escapeHtml(char.name)} ${cachedBadge}</div>
+              <div class="era-tag">${escapeHtml(char.era)}</div>
+            </div>
+            <div class="expand-btn">▼</div>
+          </div>
+
+          ${llmHtml}
+
+          <div class="char-details">
+            <div class="detail-item">
+              <div class="detail-label">简介</div>
+              <div class="detail-text">${escapeHtml(char.bio || '暂无')}</div>
+            </div>
+            <div class="detail-item">
+              <div class="detail-label">背景</div>
+              <div class="detail-text">${escapeHtml(char.background || '暂无')}</div>
+            </div>
+            ${vpTags ? `
+            <div class="detail-item">
+              <div class="detail-label">核心观点</div>
+              <div class="viewpoints-wrap">${vpTags}</div>
+            </div>` : ''}
+            <div class="detail-item">
+              <div class="detail-label">语言风格</div>
+              <div class="style-grid">
+                <div class="style-cell">
+                  <div class="cell-label">语气</div>
+                  <div class="cell-val">${escapeHtml(char.language_style?.tone || '中性')}</div>
+                </div>
+                <div class="style-cell">
+                  <div class="cell-label">说话习惯</div>
+                  <div class="cell-val">${escapeHtml(char.language_style?.speaking_habits || '一般')}</div>
+                </div>
+              </div>
+              ${catchphrases ? `<div class="catchphrases">常用表达：${escapeHtml(catchphrases)}</div>` : ''}
+            </div>
+            ${constraintsHtml}
+            ${articlesHtml}
+          </div>
+        </div>`;
+    }).join('');
+
+    document.getElementById('settings-box').style.display = 'block';
+    charsSection.classList.add('active');
+    btnStart.classList.add('active');
+  }
+
+  function toggleCard(idx) {
+    document.querySelector(`.char-card[data-index="${idx}"]`).classList.toggle('expanded');
+  }
+
+  // ── start discussion ──
+  btnStart.addEventListener('click', async () => {
+    if (!configuredCharacters || configuredCharacters.length === 0) {
+      alert('请先完成角色配置');
+      return;
+    }
+    if (configuredCharacters.length < 3) {
+      alert(`至少需要 3 位嘉宾，当前只有 ${configuredCharacters.length} 位`);
+      return;
     }
 
-    function toggleCard(idx) {
-        const card = document.querySelector(`.character-config-card[data-index="${idx}"]`);
-        card.classList.toggle('expanded');
+    btnStart.disabled = true;
+    btnStart.textContent = '正在创建讨论…';
+
+    const controller = new AbortController();
+    const timeoutId  = setTimeout(() => controller.abort(), 90000);
+
+    try {
+      const maxRounds = Math.max(5, Math.min(200,
+        parseInt(document.getElementById('max-rounds-input')?.value) || 30));
+
+      const charactersWithLlm = configuredCharacters.map((char, idx) => {
+        const sel = document.getElementById(`llm-select-${idx}`);
+        const val = sel ? sel.value : '';
+        if (val) {
+          const [provider, ...modelParts] = val.split(':');
+          return { ...char, llm_provider: provider, llm_model: modelParts.join(':') };
+        }
+        return char;
+      });
+
+      const response = await fetch('/roundtable/api/start/', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ topic, characters: charactersWithLlm, user_role: userRole, max_rounds: maxRounds }),
+        signal: controller.signal
+      });
+
+      clearTimeout(timeoutId);
+
+      if (!response.ok) {
+        const txt = await response.text();
+        let msg = `服务器错误 (${response.status})`;
+        try { msg = JSON.parse(txt).error || msg; } catch (_) {}
+        throw new Error(msg);
+      }
+
+      const data = await response.json();
+      if (data.error) throw new Error(data.error);
+
+      window.location.href = `/roundtable/d/${data.discussion_id}/?role=${userRole}`;
+
+    } catch (error) {
+      clearTimeout(timeoutId);
+      if (error.name === 'AbortError') {
+        alert('创建超时，请检查网络后重试');
+      } else if (error.message.includes('Failed to fetch')) {
+        alert('无法连接到服务器（端口 8002）');
+      } else {
+        alert('创建失败：' + error.message);
+      }
+      btnStart.disabled = false;
+      btnStart.textContent = '开始讨论';
     }
+  });
 
-    btnStart.addEventListener('click', async () => {
-        console.log('[DEBUG] Start discussion clicked');
-        console.log('[DEBUG] configuredCharacters:', configuredCharacters);
-        console.log('[DEBUG] configuredCharacters length:', configuredCharacters ? configuredCharacters.length : 0);
-
-        // Validate we have characters
-        if (!configuredCharacters || configuredCharacters.length === 0) {
-            alert('错误: 没有配置好的角色，请先配置角色');
-            return;
-        }
-
-        if (configuredCharacters.length < 3) {
-            alert(`错误: 至少需要3个角色，当前只有 ${configuredCharacters.length} 个`);
-            return;
-        }
-
-        btnStart.disabled = true;
-        btnStart.textContent = '正在创建讨论...';
-
-        // 添加超时控制器
-        const controller = new AbortController();
-        const timeoutId = setTimeout(() => {
-            controller.abort();
-            console.error('[DEBUG] Request timeout after 90 seconds');
-        }, 90000);  // 90 秒超时
-
-        try {
-            const requestData = {
-                topic: topic,
-                characters: configuredCharacters,
-                user_role: userRole
-            };
-            console.log('[DEBUG] Sending start request with:', requestData);
-
-            const response = await fetch('/roundtable/api/start/', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(requestData),
-                signal: controller.signal
-            });
-
-            clearTimeout(timeoutId);
-
-            // 检查 HTTP 响应状态
-            if (!response.ok) {
-                const errorText = await response.text();
-                let errorMsg = `服务器错误 (${response.status})`;
-                try {
-                    const errorJson = JSON.parse(errorText);
-                    errorMsg = errorJson.error || errorMsg;
-                } catch (e) {
-                    console.error('[DEBUG] Failed to parse error response:', errorText);
-                }
-                throw new Error(errorMsg);
-            }
-
-            const data = await response.json();
-            console.log('[DEBUG] Start response:', data);
-
-            if (data.error) {
-                throw new Error(data.error);
-            }
-
-            // Redirect to discussion page with user_role
-            window.location.href = `/roundtable/d/${data.discussion_id}/?role=${userRole}`;
-
-        } catch (error) {
-            clearTimeout(timeoutId);
-            console.error('[DEBUG] Start discussion error:', error);
-
-            // 区分不同类型的错误
-            if (error.name === 'AbortError') {
-                alert('创建讨论超时，请检查网络连接或稍后重试');
-            } else if (error.message.includes('Failed to fetch')) {
-                alert('无法连接到服务器，请确认服务器正在运行 (端口 8002)');
-            } else {
-                alert('创建讨论失败: ' + error.message);
-            }
-
-            btnStart.disabled = false;
-            btnStart.textContent = '开始讨论';
-        }
-    });
-
-    function escapeHtml(text) {
-        if (!text) return '';
-        const div = document.createElement('div');
-        div.textContent = String(text);
-        return div.innerHTML;
-    }
+  function escapeHtml(text) {
+    if (!text) return '';
+    const d = document.createElement('div');
+    d.textContent = String(text);
+    return d.innerHTML;
+  }
 </script>
 {% endblock %}
