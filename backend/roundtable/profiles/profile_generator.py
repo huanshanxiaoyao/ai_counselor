@@ -5,6 +5,7 @@
 import json
 import logging
 import os
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 from typing import Dict, Optional
 
@@ -35,26 +36,32 @@ def generate_offline_profile(name: str, era: str = '') -> Optional[str]:
 
     client = LLMClient(provider_name='qwen')
 
-    # 1. 生成核心人设与生平
-    persona_info = _generate_persona(name, era, client)
-    if not persona_info:
-        return None
-
-    # 2. 生成核心思想与价值观
-    core_values = _generate_core_values(name, era, persona_info.get('background', ''), client)
-
-    # 3. 生成语言风格
-    language_style = _generate_language_style(name, era, persona_info.get('background', ''), client)
-
-    # 4. 生成知识边界
-    knowledge_boundary = _generate_knowledge_boundary(name, era, client)
-
-    # 5. 生成对话行为准则和负面约束
+    # 行为准则和负面约束是纯模板，无需 LLM，直接生成
     behavior_guidelines = _generate_behavior_guidelines(name, era)
     negative_constraints = _generate_negative_constraints(name, era)
 
-    # 6. 生成参考示例
-    examples = _generate_examples(name, era, client)
+    # 第一轮并行：persona / knowledge_boundary / examples 互相独立
+    with ThreadPoolExecutor(max_workers=3) as executor:
+        fut_persona = executor.submit(_generate_persona, name, era, client)
+        fut_kb = executor.submit(_generate_knowledge_boundary, name, era, client)
+        fut_examples = executor.submit(_generate_examples, name, era, client)
+
+        persona_info = fut_persona.result()
+        knowledge_boundary = fut_kb.result()
+        examples = fut_examples.result()
+
+    if not persona_info:
+        return None
+
+    background = persona_info.get('background', '')
+
+    # 第二轮并行：core_values / language_style 均依赖 background，互相独立
+    with ThreadPoolExecutor(max_workers=2) as executor:
+        fut_cv = executor.submit(_generate_core_values, name, era, background, client)
+        fut_ls = executor.submit(_generate_language_style, name, era, background, client)
+
+        core_values = fut_cv.result()
+        language_style = fut_ls.result()
 
     # 组装完整设定
     profile = {
