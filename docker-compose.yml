@@ -35,17 +35,17 @@ services:
     volumes:
       - .:/app
     ports:
-      - "${APP_PORT:-8002}:8002"
+      - "${APP_PORT:-8003}:8002"
     env_file:
       - .env
     environment:
-      - DEBUG=1
+      - DEBUG=0
       - PYTHONPATH=/app
       - DATABASE_URL=postgresql://postgres:postgres@postgres:5432/ai_counselor
       - REDIS_HOST=redis
       - REDIS_PORT=6379
     working_dir: /app/backend
-    command: sh -c "python manage.py migrate && daphne -b 0.0.0.0 -p 8002 backend.config.asgi:application"
+    command: sh -c "python manage.py migrate && python manage.py collectstatic --noinput && daphne -b 0.0.0.0 -p 8002 backend.config.asgi:application"
     depends_on:
       postgres:
         condition: service_healthy

@@ -28,6 +28,9 @@ env/
 *.swo
 *~
 
+# Claude Code local settings (machine-specific)
+.claude/
+
 # System files
 .DS_Store
 Thumbs.db
@@ -36,6 +39,7 @@ Thumbs.db
 logs/
 *.log
 backend/staticfiles/
+staticfiles/
 frontend/dist/
 frontend/node_modules/
 

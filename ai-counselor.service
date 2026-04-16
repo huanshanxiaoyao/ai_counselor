@@ -1,0 +1,22 @@
+[Unit]
+Description=AI Counselor Daphne ASGI Server
+After=network.target postgresql.service redis.service
+
+[Service]
+Type=simple
+User=jack
+WorkingDirectory=/home/jack/workspace/ai_counselor
+Environment=PYTHONPATH=/home/jack/workspace/ai_counselor
+EnvironmentFile=/home/jack/workspace/ai_counselor/.env
+ExecStart=/home/jack/workspace/ai_counselor/venv/bin/daphne \
+    -b 127.0.0.1 \
+    -p 8003 \
+    backend.config.asgi:application
+Restart=always
+RestartSec=5
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=ai-counselor
+
+[Install]
+WantedBy=multi-user.target
