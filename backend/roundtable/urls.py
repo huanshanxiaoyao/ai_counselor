@@ -30,4 +30,5 @@ urlpatterns = [
     # 历史讨论
     path('api/history/', views.HistoryListApiView.as_view(), name='history_list'),
     path('api/restart/<int:discussion_id>/', views.RestartApiView.as_view(), name='restart'),
+    path('api/d/<int:discussion_id>/resume/', views.DiscussionResumeApiView.as_view(), name='resume'),
 ]

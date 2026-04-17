@@ -46,6 +46,7 @@ class AutoContinueService:
             logger.info(f"[AutoContinue:{self.discussion_id}] 开始自动继续，共 {self._character_count} 个角色")
 
             # 主循环
+            consecutive_errors = 0
             while self._should_continue():
                 close_old_connections()
                 self._refresh_state()
@@ -53,12 +54,22 @@ class AutoContinueService:
                 # 判断当前阶段
                 current_round = self._discussion.current_round
 
-                if current_round <= self._character_count:
-                    # 初始化阶段：按顺序轮询
-                    self._run_init_phase(current_round)
-                else:
-                    # LLM决策阶段
-                    self._run_llm_phase()
+                try:
+                    if current_round <= self._character_count:
+                        # 初始化阶段：按顺序轮询
+                        self._run_init_phase(current_round)
+                    else:
+                        # LLM决策阶段
+                        self._run_llm_phase()
+                    consecutive_errors = 0
+                except Exception as e:
+                    consecutive_errors += 1
+                    logger.error(f"[AutoContinue:{self.discussion_id}] 单轮错误 ({consecutive_errors}): {e}")
+                    self._broadcast_debug(f"[警告] 本轮执行出错，将继续下一轮: {e}")
+                    if consecutive_errors >= 5:
+                        logger.error(f"[AutoContinue:{self.discussion_id}] 连续 {consecutive_errors} 次错误，停止")
+                        self._broadcast_debug(f"[错误] 连续 {consecutive_errors} 次失败，自动停止")
+                        break
 
                 # 短暂休息
                 time.sleep(1)
@@ -263,25 +274,37 @@ class AutoContinueService:
     def _generate_character_speech(self, char: Character, history: str):
         """生成角色发言"""
         from .character import CharacterAgent
+        from backend.llm.exceptions import LLMTimeoutError, LLMError
 
         char.refresh_from_db()
         character_agent = CharacterAgent(provider=char.llm_provider or None)
 
-        speech = character_agent.generate_speech(
-            character_config={
-                'name': char.name,
-                'era': char.era,
-                'bio': char.bio,
-                'background': char.background,
-                'language_style': char.language_style,
-                'temporal_constraints': char.temporal_constraints,
-                'viewpoints': char.viewpoints,
-            },
-            topic=self._discussion.topic,
-            conversation_history=history,
-            character_limit=self._discussion.character_limit,
-            model=char.llm_model or None,
-        )
+        try:
+            speech = character_agent.generate_speech(
+                character_config={
+                    'name': char.name,
+                    'era': char.era,
+                    'bio': char.bio,
+                    'background': char.background,
+                    'language_style': char.language_style,
+                    'temporal_constraints': char.temporal_constraints,
+                    'viewpoints': char.viewpoints,
+                },
+                topic=self._discussion.topic,
+                conversation_history=history,
+                character_limit=self._discussion.character_limit,
+                model=char.llm_model or None,
+            )
+        except (LLMTimeoutError, LLMError) as e:
+            logger.error(f"[AutoContinue:{self.discussion_id}] {char.name} 发言生成失败: {e}")
+            self._broadcast_debug(f"[错误] {char.name} 发言生成失败（网络/LLM错误），跳过本轮")
+            # 原子自增轮次以避免无限卡在同一轮
+            from django.db.models import F
+            Discussion.objects.filter(id=self.discussion_id).update(
+                current_round=F('current_round') + 1,
+            )
+            self._discussion.refresh_from_db()
+            return
 
         # 累计 token 消耗到 Discussion
         if character_agent.last_token_usage:

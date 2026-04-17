@@ -827,6 +827,49 @@ class CacheClearApiView(View):
             return JsonResponse({'error': '服务器内部错误，请稍后重试'}, status=500)
 
 
+class DiscussionResumeApiView(View):
+    """API - 恢复卡住的讨论（重启 AutoContinueService）"""
+
+    def post(self, request, discussion_id):
+        """为已有 active 讨论重启后台自动推进线程"""
+        try:
+            discussion = Discussion.objects.get(id=discussion_id)
+
+            if discussion.status != 'active':
+                return JsonResponse({
+                    'error': f'讨论状态为 {discussion.status}，只有 active 状态可恢复'
+                }, status=400)
+
+            if discussion.user_role != 'observer':
+                return JsonResponse({
+                    'error': '只有旁观者模式（observer）的讨论才由后台线程驱动'
+                }, status=400)
+
+            import threading
+            from .services.auto_continue import start_auto_continue
+
+            thread = threading.Thread(
+                target=start_auto_continue,
+                args=(discussion.id,),
+                daemon=True
+            )
+            thread.start()
+            logger.info(f"[AutoContinue] 手动恢复后台任务 for discussion {discussion.id}")
+
+            return JsonResponse({
+                'success': True,
+                'message': f'已重启讨论 {discussion_id} 的后台推进线程',
+                'current_round': discussion.current_round,
+                'max_rounds': discussion.max_rounds,
+            })
+
+        except Discussion.DoesNotExist:
+            return JsonResponse({'error': '讨论不存在'}, status=404)
+        except Exception as e:
+            logger.exception("Error resuming discussion")
+            return JsonResponse({'error': '服务器内部错误，请稍后重试'}, status=500)
+
+
 class CandidateQueueListApiView(View):
     """API - 获取候选队列列表"""
 
