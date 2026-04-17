@@ -216,6 +216,17 @@ class CharacterAgent:
 
         return result.text.strip()
 
+    # 各字段在 system prompt 中的最大字符数（中文约等于 token 数的 2 倍）
+    _LIMIT_BIO = 100
+    _LIMIT_BACKGROUND = 500
+    _LIMIT_VIEWPOINTS_STR = 800   # 格式化后总长度
+    _LIMIT_TONE = 80
+    _LIMIT_CATCHPHRASES = 150     # join 后总长度，最多取前 3 条
+    _LIMIT_SPEAKING_HABITS = 200
+    _LIMIT_CAN_DISCUSS = 5        # 条目数
+    _LIMIT_CANNOT_DISCUSS = 5     # 条目数
+    _LIMIT_KNOWLEDGE_CUTOFF = 100
+
     def _get_speaking_system_prompt(
         self,
         name: str,
@@ -229,15 +240,23 @@ class CharacterAgent:
     ) -> str:
         """构建角色发言的 system prompt"""
 
-        can_discuss = temporal_constraints.get('can_discuss', [])
-        cannot_discuss = temporal_constraints.get('cannot_discuss', [])
-        knowledge_cutoff = temporal_constraints.get('knowledge_cutoff', '')
+        # ---------- 截断各字段 ----------
+        bio = bio[:self._LIMIT_BIO]
+        background = background[:self._LIMIT_BACKGROUND]
 
-        tone = language_style.get('tone', '中性')
-        catchphrases = language_style.get('catchphrases', [])
-        speaking_habits = language_style.get('speaking_habits', '')
+        can_discuss = temporal_constraints.get('can_discuss', [])[:self._LIMIT_CAN_DISCUSS]
+        cannot_discuss = temporal_constraints.get('cannot_discuss', [])[:self._LIMIT_CANNOT_DISCUSS]
+        knowledge_cutoff = temporal_constraints.get('knowledge_cutoff', '')[:self._LIMIT_KNOWLEDGE_CUTOFF]
 
-        viewpoints_str = "\n".join([f"- {k}: {v}" for k, v in viewpoints.items()])
+        tone = language_style.get('tone', '中性')[:self._LIMIT_TONE]
+        raw_catchphrases = language_style.get('catchphrases', [])[:3]  # 最多 3 条
+        catchphrases_str = ', '.join(raw_catchphrases)
+        if len(catchphrases_str) > self._LIMIT_CATCHPHRASES:
+            catchphrases_str = catchphrases_str[:self._LIMIT_CATCHPHRASES]
+        speaking_habits = language_style.get('speaking_habits', '')[:self._LIMIT_SPEAKING_HABITS]
+
+        raw_viewpoints_str = "\n".join([f"- {k}: {v}" for k, v in viewpoints.items()])
+        viewpoints_str = raw_viewpoints_str[:self._LIMIT_VIEWPOINTS_STR]
 
         return f"""你扮演历史人物：{name}
 
@@ -251,7 +270,7 @@ class CharacterAgent:
 
 【语言风格】
 - 语气：{tone}
-- 常用表达：{', '.join(catchphrases) if catchphrases else '一般表达'}
+- 常用表达：{catchphrases_str if catchphrases_str else '一般表达'}
 - 说话习惯：{speaking_habits}
 
 【时代约束 - 非常重要】
