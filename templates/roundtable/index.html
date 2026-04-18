@@ -835,13 +835,7 @@
     }
     btnStart.disabled = !canProceed;
 
-    if (hasInvalid) {
-      btnStart.textContent = '请先处理未通过的嘉宾';
-    } else if (hasPending) {
-      btnStart.textContent = '前往配置 →';  // 点击会先校验
-    } else {
-      btnStart.textContent = '前往配置 →';
-    }
+    btnStart.textContent = hasInvalid ? '请先处理未通过的嘉宾' : '前往配置 →';
 
     updateManualControls();
   }
@@ -852,10 +846,10 @@
 
     const pending = manualGuests.filter(g => g.status === 'pending');
     if (pending.length > 0) {
-      await validatePendingGuests(pending);
-      // 校验后若仍有 invalid，不跳转
+      const ok = await validatePendingGuests(pending);
+      // 网络/服务故障：留在页面让用户重试，不带未评审的嘉宾跳转
+      if (!ok) return;
       if (manualGuests.some(g => g.status === 'invalid')) return;
-      // 总数校验（通过后可能减少，若 < MIN_SELECT 不跳转）
       if (totalCount() < MIN_SELECT) return;
     }
 
@@ -871,6 +865,7 @@
     const names = pending.map(g => g.name);
     btnStart.disabled = true;
     btnStart.textContent = '评审中…';
+    let ok = false;
     try {
       const resp = await fetch('/roundtable/api/validate-guests/', {
         method: 'POST',
@@ -900,20 +895,23 @@
           g.status = 'invalid';
         }
       });
+      ok = true;
     } catch (err) {
       setManualError('评审服务暂时不可用，请稍后再试');
     } finally {
       renderManualCards();
       updateSelectionUI();
     }
+    return ok;
   }
 
   function renderManualCards() {
     manualCards.innerHTML = manualGuests.map((g, i) => {
-      let statusText, statusEmoji;
+      // statusEmoji/statusText 仅在 pending/invalid 的 reasonLine 兜底显示；
+      // valid 状态下展示的是 r.reason，所以这里不为 valid 赋值。
+      let statusText = '', statusEmoji = '';
       if (g.status === 'pending') { statusEmoji = '⏳'; statusText = '待评审'; }
-      else if (g.status === 'valid') { statusEmoji = '✓'; statusText = '已通过'; }
-      else { statusEmoji = '❌'; statusText = FIXED_REJECTION; }
+      else if (g.status === 'invalid') { statusEmoji = '❌'; statusText = FIXED_REJECTION; }
 
       const eraLine = (g.status === 'valid' && g.era)
         ? `<div class="mc-era">${escapeHtml(g.era)}</div>` : '';
