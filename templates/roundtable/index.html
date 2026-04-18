@@ -666,7 +666,7 @@
     </div>
 
     <div id="characters-section" class="characters-section">
-      <div class="section-divider"><span>为你推荐以下嘉宾（选择 3–5 位）</span></div>
+      <div class="section-divider"><span>为你推荐以下嘉宾（选择 3–8 位）</span></div>
       <div id="characters-grid" class="characters-grid"></div>
       <div id="manual-guests" class="manual-guests">
         <div class="section-divider"><span>推荐你心仪的嘉宾（最多 3 位）</span></div>
@@ -825,13 +825,15 @@
     const canProceed = count >= MIN_SELECT
       && count <= MAX_SELECT
       && !hasInvalid;  // pending 允许，点按钮时触发校验
-    if (canProceed) {
+
+    // 当有未通过卡片时仍显示按钮（带提示文案），让用户看到"请先处理…"反馈
+    const shouldShow = canProceed || hasInvalid;
+    if (shouldShow) {
       btnStart.classList.add('active');
-      btnStart.disabled = false;
     } else {
       btnStart.classList.remove('active');
-      btnStart.disabled = true;
     }
+    btnStart.disabled = !canProceed;
 
     if (hasInvalid) {
       btnStart.textContent = '请先处理未通过的嘉宾';
