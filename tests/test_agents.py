@@ -4,6 +4,8 @@ Tests for Roundtable agents.
 import pytest
 from unittest.mock import patch, MagicMock
 
+from backend.roundtable.services.director import DirectorAgent
+
 
 class TestDirectorAgent:
     """Tests for DirectorAgent"""
@@ -53,6 +55,116 @@ class TestDirectorAgent:
 
             assert isinstance(result, dict)
             assert 'core_issue' in result
+
+    def test_validate_manual_characters_all_valid(self, director_agent):
+        """全部通过场景"""
+        director_agent.client.complete.return_value = '''[
+            {"name": "王阳明", "valid": true, "era": "明代",
+             "reason": "心学集大成者", "rejection_reason": null},
+            {"name": "林黛玉", "valid": true, "era": "清代《红楼梦》",
+             "reason": "贾府才女", "rejection_reason": null}
+        ]'''
+        result = director_agent.validate_manual_characters(
+            topic="项羽该不该渡江",
+            names=["王阳明", "林黛玉"],
+        )
+        assert len(result) == 2
+        assert result[0]["name"] == "王阳明"
+        assert result[0]["valid"] is True
+        assert result[0]["era"] == "明代"
+        assert result[0]["reason"] == "心学集大成者"
+        assert result[0]["rejection_reason"] is None
+        assert result[1]["name"] == "林黛玉"
+        assert result[1]["valid"] is True
+
+    def test_validate_manual_characters_all_rejected(self, director_agent):
+        """全部驳回场景:rejection_reason 必须被上层覆盖为固定文案(agent 层保留原文案,view 层覆盖)"""
+        director_agent.client.complete.return_value = '''[
+            {"name": "xyz123", "valid": false, "era": null,
+             "reason": null, "rejection_reason": "无法识别"}
+        ]'''
+        result = director_agent.validate_manual_characters(
+            topic="某话题", names=["xyz123"]
+        )
+        assert len(result) == 1
+        assert result[0]["valid"] is False
+        assert result[0]["era"] is None
+        assert result[0]["reason"] is None
+        assert result[0]["rejection_reason"] == "无法识别"
+
+    def test_validate_manual_characters_partial(self, director_agent):
+        """部分通过场景,保序"""
+        director_agent.client.complete.return_value = '''[
+            {"name": "王阳明", "valid": true, "era": "明代",
+             "reason": "心学", "rejection_reason": null},
+            {"name": "xyz", "valid": false, "era": null,
+             "reason": null, "rejection_reason": "无法识别"},
+            {"name": "林黛玉", "valid": true, "era": "清代",
+             "reason": "才女", "rejection_reason": null}
+        ]'''
+        result = director_agent.validate_manual_characters(
+            topic="t", names=["王阳明", "xyz", "林黛玉"]
+        )
+        assert [r["name"] for r in result] == ["王阳明", "xyz", "林黛玉"]
+        assert [r["valid"] for r in result] == [True, False, True]
+
+    def test_validate_manual_characters_length_mismatch_falls_back(self, director_agent):
+        """LLM 返回数组长度与入参不等 → 整体 fallback 为 invalid"""
+        director_agent.client.complete.return_value = '''[
+            {"name": "王阳明", "valid": true, "era": "明代",
+             "reason": "x", "rejection_reason": null}
+        ]'''
+        result = director_agent.validate_manual_characters(
+            topic="t", names=["王阳明", "林黛玉"]
+        )
+        assert len(result) == 2
+        for i, name in enumerate(["王阳明", "林黛玉"]):
+            assert result[i]["name"] == name
+            assert result[i]["valid"] is False
+            assert result[i]["era"] is None
+            assert result[i]["reason"] is None
+            assert result[i]["rejection_reason"] == \
+                DirectorAgent.DEFAULT_REJECTION
+
+    def test_validate_manual_characters_invalid_json_falls_back(self, director_agent):
+        """LLM 返回非法 JSON → 整体 fallback"""
+        director_agent.client.complete.return_value = "not json at all"
+        result = director_agent.validate_manual_characters(
+            topic="t", names=["A", "B"]
+        )
+        assert len(result) == 2
+        for r in result:
+            assert r["valid"] is False
+            assert r["rejection_reason"] == DirectorAgent.DEFAULT_REJECTION
+
+    def test_validate_manual_characters_name_misaligned_falls_back(
+        self, director_agent
+    ):
+        """LLM 返回了对的长度但 name 对不上 → 整体 fallback"""
+        director_agent.client.complete.return_value = '''[
+            {"name": "错名", "valid": true, "era": "x",
+             "reason": "y", "rejection_reason": null},
+            {"name": "另一个错名", "valid": true, "era": "x",
+             "reason": "y", "rejection_reason": null}
+        ]'''
+        result = director_agent.validate_manual_characters(
+            topic="t", names=["王阳明", "林黛玉"]
+        )
+        assert all(r["valid"] is False for r in result)
+        assert [r["name"] for r in result] == ["王阳明", "林黛玉"]
+
+    def test_validate_manual_characters_valid_missing_fields(self, director_agent):
+        """valid=true 但 era/reason 缺失 → 填空字符串,不 fallback"""
+        director_agent.client.complete.return_value = '''[
+            {"name": "王阳明", "valid": true}
+        ]'''
+        result = director_agent.validate_manual_characters(
+            topic="t", names=["王阳明"]
+        )
+        assert len(result) == 1
+        assert result[0]["valid"] is True
+        assert result[0]["era"] == ""
+        assert result[0]["reason"] == ""
 
 
 class TestCharacterAgent:
