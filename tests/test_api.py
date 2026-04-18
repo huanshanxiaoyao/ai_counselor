@@ -241,7 +241,12 @@ class TestIndexPage:
 
 @pytest.mark.django_db
 class TestValidateGuestsAPI:
-    """Tests for /roundtable/api/validate-guests/ endpoint"""
+    """Tests for /roundtable/api/validate-guests/ endpoint.
+
+    DirectorAgent is mocked in every test, but django_db is required
+    because Django's session/auth middleware touches the DB on every
+    request through Client().
+    """
 
     URL = '/roundtable/api/validate-guests/'
 
