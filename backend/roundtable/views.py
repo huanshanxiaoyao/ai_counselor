@@ -14,6 +14,7 @@ from .services.character import CharacterAgent
 from .services.host_agent import HostAgent as ModeratorAgent
 from .models import Discussion, Character, Message
 from backend.llm.providers import get_all_providers
+from backend.llm.exceptions import LLMError
 
 logger = logging.getLogger(__name__)
 
@@ -1171,3 +1172,87 @@ class RestartApiView(View):
         except Exception as e:
             logger.exception("Error restarting discussion")
             return JsonResponse({'error': '服务器内部错误，请稍后重试'}, status=500)
+
+class ValidateGuestsView(View):
+    """API endpoint - 校验用户手动推荐的嘉宾是否为有效人物"""
+
+    MAX_CANDIDATES = 3
+    MAX_NAME_LEN = 20
+    FIXED_REJECTION = "评委会未能通过你推荐的人物"
+
+    def post(self, request):
+        content_type = request.headers.get('Content-Type', '')
+        if 'application/json' not in content_type:
+            return JsonResponse(
+                {'error': 'Content-Type must be application/json'},
+                status=400,
+            )
+
+        try:
+            data = json.loads(request.body)
+        except json.JSONDecodeError:
+            return JsonResponse({'error': '无效的请求格式'}, status=400)
+
+        topic = (data.get('topic') or '').strip()
+        candidates = data.get('candidates')
+
+        if not isinstance(candidates, list) or len(candidates) == 0:
+            return JsonResponse(
+                {'error': 'candidates 不能为空'}, status=400,
+            )
+        if len(candidates) > self.MAX_CANDIDATES:
+            return JsonResponse(
+                {'error': f'最多支持 {self.MAX_CANDIDATES} 位手动推荐'},
+                status=400,
+            )
+
+        cleaned: list[str] = []
+        for raw in candidates:
+            if not isinstance(raw, str):
+                return JsonResponse(
+                    {'error': '人物名必须为字符串'}, status=400,
+                )
+            name = raw.strip()
+            if not name:
+                return JsonResponse(
+                    {'error': '人物名不能为空'}, status=400,
+                )
+            if len(name) > self.MAX_NAME_LEN:
+                return JsonResponse(
+                    {'error': f'单个人物名不能超过 {self.MAX_NAME_LEN} 字'},
+                    status=400,
+                )
+            cleaned.append(name)
+
+        if len(set(cleaned)) != len(cleaned):
+            return JsonResponse({'error': '人物名不能重复'}, status=400)
+
+        try:
+            director = DirectorAgent()
+            results = director.validate_manual_characters(topic, cleaned)
+        except LLMError:
+            logger.exception("Validator LLM call failed")
+            return JsonResponse(
+                {'error': '评审服务暂时不可用，请稍后再试'},
+                status=500,
+            )
+        except Exception:
+            logger.exception("Unexpected error in validate-guests")
+            return JsonResponse(
+                {'error': '评审服务暂时不可用，请稍后再试'},
+                status=500,
+            )
+
+        for item in results:
+            if not item.get('valid'):
+                original = item.get('rejection_reason')
+                logger.info(
+                    "Guest rejected: name=%s llm_reason=%s",
+                    item.get('name'), original,
+                )
+                item['rejection_reason'] = self.FIXED_REJECTION
+
+        return JsonResponse(
+            {'results': results},
+            json_dumps_params={'ensure_ascii': False},
+        )

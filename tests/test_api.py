@@ -237,3 +237,138 @@ class TestIndexPage:
         response = client.get('/roundtable/')
         content = response.content.decode('utf-8')
         assert 'topic' in content.lower() or '话题' in content
+
+
+@pytest.mark.django_db
+class TestValidateGuestsAPI:
+    """Tests for /roundtable/api/validate-guests/ endpoint"""
+
+    URL = '/roundtable/api/validate-guests/'
+
+    def _post(self, body):
+        return Client().post(
+            self.URL,
+            data=json.dumps(body),
+            content_type='application/json',
+        )
+
+    def test_all_valid(self):
+        """全部通过：返回原始 era/reason，rejection_reason 为 null"""
+        with patch(
+            'backend.roundtable.views.DirectorAgent.validate_manual_characters'
+        ) as mock:
+            mock.return_value = [
+                {"name": "王阳明", "valid": True, "era": "明代",
+                 "reason": "心学", "rejection_reason": None},
+                {"name": "林黛玉", "valid": True, "era": "清代",
+                 "reason": "才女", "rejection_reason": None},
+            ]
+            resp = self._post({
+                "topic": "t", "candidates": ["王阳明", "林黛玉"]
+            })
+        assert resp.status_code == 200
+        data = json.loads(resp.content)
+        assert [r["name"] for r in data["results"]] == ["王阳明", "林黛玉"]
+        assert all(r["valid"] for r in data["results"])
+        assert all(r["rejection_reason"] is None for r in data["results"])
+
+    def test_all_rejected_reason_is_overridden(self):
+        """驳回项 rejection_reason 必须被覆盖为固定文案，原因只入日志"""
+        with patch(
+            'backend.roundtable.views.DirectorAgent.validate_manual_characters'
+        ) as mock:
+            mock.return_value = [
+                {"name": "xyz", "valid": False, "era": None,
+                 "reason": None, "rejection_reason": "LLM 的原始原因"},
+            ]
+            resp = self._post({"topic": "t", "candidates": ["xyz"]})
+        assert resp.status_code == 200
+        data = json.loads(resp.content)
+        assert data["results"][0]["valid"] is False
+        assert data["results"][0]["rejection_reason"] == \
+            "评委会未能通过你推荐的人物"
+
+    def test_partial_pass_preserves_order(self):
+        with patch(
+            'backend.roundtable.views.DirectorAgent.validate_manual_characters'
+        ) as mock:
+            mock.return_value = [
+                {"name": "A", "valid": True, "era": "x",
+                 "reason": "y", "rejection_reason": None},
+                {"name": "B", "valid": False, "era": None,
+                 "reason": None, "rejection_reason": "bad"},
+                {"name": "C", "valid": True, "era": "x",
+                 "reason": "y", "rejection_reason": None},
+            ]
+            resp = self._post({
+                "topic": "t", "candidates": ["A", "B", "C"]
+            })
+        assert resp.status_code == 200
+        data = json.loads(resp.content)
+        assert [r["valid"] for r in data["results"]] == [True, False, True]
+        assert data["results"][1]["rejection_reason"] == \
+            "评委会未能通过你推荐的人物"
+
+    def test_empty_candidates_returns_400(self):
+        resp = self._post({"topic": "t", "candidates": []})
+        assert resp.status_code == 400
+
+    def test_too_many_candidates_returns_400(self):
+        resp = self._post({
+            "topic": "t", "candidates": ["A", "B", "C", "D"]
+        })
+        assert resp.status_code == 400
+
+    def test_name_too_long_returns_400(self):
+        resp = self._post({
+            "topic": "t", "candidates": ["A" * 21]
+        })
+        assert resp.status_code == 400
+
+    def test_empty_name_returns_400(self):
+        resp = self._post({"topic": "t", "candidates": ["   "]})
+        assert resp.status_code == 400
+
+    def test_duplicate_candidates_returns_400(self):
+        resp = self._post({
+            "topic": "t", "candidates": ["王阳明", "王阳明"]
+        })
+        assert resp.status_code == 400
+
+    def test_bad_content_type_returns_400(self):
+        resp = Client().post(
+            self.URL,
+            data=json.dumps({"topic": "t", "candidates": ["x"]}),
+            content_type='text/plain',
+        )
+        assert resp.status_code == 400
+
+    def test_bad_json_returns_400(self):
+        resp = Client().post(
+            self.URL, data="not json",
+            content_type='application/json',
+        )
+        assert resp.status_code == 400
+
+    def test_llm_failure_returns_500(self):
+        from backend.llm.exceptions import LLMAPIError
+        with patch(
+            'backend.roundtable.views.DirectorAgent.validate_manual_characters',
+            side_effect=LLMAPIError("boom")
+        ):
+            resp = self._post({"topic": "t", "candidates": ["王阳明"]})
+        assert resp.status_code == 500
+        data = json.loads(resp.content)
+        assert "评审服务" in data["error"]
+
+    def test_topic_optional(self):
+        """topic 可省略，仍能正常校验"""
+        with patch(
+            'backend.roundtable.views.DirectorAgent.validate_manual_characters'
+        ) as mock:
+            mock.return_value = [
+                {"name": "王阳明", "valid": True, "era": "明代",
+                 "reason": "x", "rejection_reason": None},
+            ]
+            resp = self._post({"candidates": ["王阳明"]})
+        assert resp.status_code == 200

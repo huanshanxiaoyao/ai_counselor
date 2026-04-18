@@ -13,6 +13,7 @@ urlpatterns = [
     path('characters/', views.ProfileListView.as_view(), name='profiles'),
     path('api/suggestions/', views.SuggestionsView.as_view(), name='suggestions'),
     path('api/configure/', views.ConfigureView.as_view(), name='configure'),
+    path('api/validate-guests/', views.ValidateGuestsView.as_view(), name='validate_guests'),
     path('api/start/', views.DiscussionStartView.as_view(), name='start'),
     path('api/d/<int:discussion_id>/message/', views.DiscussionMessageView.as_view(), name='message'),
     path('api/d/<int:discussion_id>/poll/', views.DiscussionPollView.as_view(), name='poll'),
