@@ -485,6 +485,129 @@
   box-shadow: 0 6px 20px rgba(200,168,69,0.28);
 }
 
+/* ── manual guest section ── */
+.manual-guests {
+  margin-top: 22px;
+  padding-top: 22px;
+  border-top: 1px dashed var(--gold-border);
+}
+
+.manual-guests .section-divider { margin-bottom: 14px; }
+
+.manual-input-row {
+  display: flex;
+  gap: 10px;
+  margin-bottom: 14px;
+}
+
+.manual-input-row input {
+  flex: 1;
+  padding: 10px 14px;
+  background: rgba(0,0,0,0.38);
+  border: 1px solid rgba(255,255,255,0.1);
+  border-radius: 8px;
+  color: var(--text);
+  font-size: 0.92rem;
+}
+
+.manual-input-row input:focus {
+  outline: none;
+  border-color: rgba(200,168,69,0.5);
+}
+
+.manual-input-row input:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.btn-add-guest {
+  padding: 10px 18px;
+  background: rgba(200,168,69,0.15);
+  border: 1px solid var(--gold-border);
+  border-radius: 8px;
+  color: var(--gold-light);
+  font-size: 0.88rem;
+  font-weight: 600;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background 0.18s;
+}
+.btn-add-guest:hover:not(:disabled) { background: rgba(200,168,69,0.28); }
+.btn-add-guest:disabled { opacity: 0.4; cursor: not-allowed; }
+
+.manual-cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  gap: 10px;
+}
+
+.manual-card {
+  position: relative;
+  padding: 12px 30px 12px 14px;
+  border-radius: 10px;
+  border: 1px solid rgba(255,255,255,0.18);
+  background: rgba(255,255,255,0.07);
+  font-size: 0.88rem;
+}
+
+.manual-card.pending {
+  border-color: rgba(200,168,69,0.4);
+  background: rgba(200,168,69,0.06);
+}
+
+.manual-card.valid {
+  border-color: rgba(126,201,126,0.55);
+  background: rgba(126,201,126,0.09);
+}
+
+.manual-card.invalid {
+  border-color: rgba(217,96,96,0.55);
+  background: rgba(217,96,96,0.08);
+}
+
+.manual-card .mc-name {
+  font-weight: 700;
+  color: var(--text);
+  margin-bottom: 4px;
+}
+.manual-card .mc-era {
+  font-size: 0.76rem;
+  color: var(--gold);
+  margin-bottom: 4px;
+}
+.manual-card .mc-status {
+  font-size: 0.78rem;
+  color: var(--muted);
+}
+.manual-card.valid   .mc-status { color: #7ec97e; }
+.manual-card.invalid .mc-status { color: var(--red); }
+
+.manual-card .mc-remove {
+  position: absolute;
+  top: 8px;
+  right: 10px;
+  width: 18px;
+  height: 18px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  background: rgba(255,255,255,0.15);
+  color: var(--text);
+  font-size: 11px;
+  cursor: pointer;
+  user-select: none;
+}
+.manual-card .mc-remove:hover { background: rgba(255,255,255,0.3); }
+
+.manual-hint {
+  font-size: 0.74rem;
+  color: var(--muted);
+  margin-top: 8px;
+  min-height: 1em;
+}
+.manual-hint.error { color: var(--red); }
+
 /* ── responsive ── */
 @media (max-width: 620px) {
   .setup-card { padding: 24px 20px; }
@@ -545,6 +668,20 @@
     <div id="characters-section" class="characters-section">
       <div class="section-divider"><span>为你推荐以下嘉宾（选择 3–5 位）</span></div>
       <div id="characters-grid" class="characters-grid"></div>
+      <div id="manual-guests" class="manual-guests">
+        <div class="section-divider"><span>推荐你心仪的嘉宾（最多 3 位）</span></div>
+        <div class="manual-input-row">
+          <input
+            type="text"
+            id="manual-input"
+            placeholder="输入人物名，如：王阳明"
+            maxlength="20"
+          >
+          <button type="button" id="btn-add-guest" class="btn-add-guest">+ 添加</button>
+        </div>
+        <div id="manual-cards" class="manual-cards"></div>
+        <div id="manual-hint" class="manual-hint"></div>
+      </div>
       <div class="selection-bar">
         <div class="selection-info">已选：<strong id="selected-count">0</strong> 位</div>
         <button id="btn-start" class="btn-start" disabled>前往配置 →</button>
@@ -570,6 +707,12 @@
 <script>
   const MIN_SELECT = 3;
   const MAX_SELECT = 8;
+  const MAX_MANUAL = 3;
+  const FIXED_REJECTION = '评委会未能通过你推荐的人物';
+
+  // manual guest state: [{name, status, era, reason}]
+  // status: 'pending' | 'valid' | 'invalid'
+  let manualGuests = [];
 
   let selectedCharacters = [];
   let currentTopic = '';
@@ -585,6 +728,10 @@
   const selectedCount    = document.getElementById('selected-count');
   const btnStart         = document.getElementById('btn-start');
   const errorMessage     = document.getElementById('error-message');
+  const manualInput    = document.getElementById('manual-input');
+  const btnAddGuest    = document.getElementById('btn-add-guest');
+  const manualCards    = document.getElementById('manual-cards');
+  const manualHint     = document.getElementById('manual-hint');
 
   userRoleSelect.addEventListener('change', () => {
     const role = userRoleSelect.value;
@@ -656,33 +803,202 @@
     if (idx >= 0) {
       selectedCharacters.splice(idx, 1);
       card.classList.remove('selected');
-    } else if (selectedCharacters.length < MAX_SELECT) {
+    } else if (totalCount() < MAX_SELECT) {
       selectedCharacters.push(character);
       card.classList.add('selected');
     }
     updateSelectionUI();
   }
 
+  function totalCount() {
+    // selectedCharacters 已包含 valid 状态的手动卡片；pending/invalid 手动卡片单独计数
+    const extraManual = manualGuests.filter(g => g.status !== 'valid').length;
+    return selectedCharacters.length + extraManual;
+  }
+
   function updateSelectionUI() {
-    const count = selectedCharacters.length;
+    const count = totalCount();
+    const hasPending = manualGuests.some(g => g.status === 'pending');
+    const hasInvalid = manualGuests.some(g => g.status === 'invalid');
     selectedCount.textContent = count;
-    if (count >= MIN_SELECT && count <= MAX_SELECT) {
+
+    const canProceed = count >= MIN_SELECT
+      && count <= MAX_SELECT
+      && !hasInvalid;  // pending 允许，点按钮时触发校验
+    if (canProceed) {
       btnStart.classList.add('active');
       btnStart.disabled = false;
     } else {
       btnStart.classList.remove('active');
       btnStart.disabled = true;
     }
+
+    if (hasInvalid) {
+      btnStart.textContent = '请先处理未通过的嘉宾';
+    } else if (hasPending) {
+      btnStart.textContent = '前往配置 →';  // 点击会先校验
+    } else {
+      btnStart.textContent = '前往配置 →';
+    }
+
+    updateManualControls();
   }
 
-  btnStart.addEventListener('click', () => {
-    if (selectedCharacters.length < MIN_SELECT) return;
+  btnStart.addEventListener('click', async () => {
+    if (totalCount() < MIN_SELECT) return;
+    if (manualGuests.some(g => g.status === 'invalid')) return;
+
+    const pending = manualGuests.filter(g => g.status === 'pending');
+    if (pending.length > 0) {
+      await validatePendingGuests(pending);
+      // 校验后若仍有 invalid，不跳转
+      if (manualGuests.some(g => g.status === 'invalid')) return;
+      // 总数校验（通过后可能减少，若 < MIN_SELECT 不跳转）
+      if (totalCount() < MIN_SELECT) return;
+    }
+
     const params = new URLSearchParams({
       topic: currentTopic,
       characters: JSON.stringify(selectedCharacters),
       user_role: userRoleSelect.value
     });
     window.location.href = '/roundtable/setup/?' + params.toString();
+  });
+
+  async function validatePendingGuests(pending) {
+    const names = pending.map(g => g.name);
+    btnStart.disabled = true;
+    btnStart.textContent = '评审中…';
+    try {
+      const resp = await fetch('/roundtable/api/validate-guests/', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ topic: currentTopic, candidates: names }),
+      });
+      if (!resp.ok) throw new Error('HTTP ' + resp.status);
+      const data = await resp.json();
+      const byName = {};
+      (data.results || []).forEach(r => { byName[r.name] = r; });
+
+      manualGuests.forEach(g => {
+        if (g.status !== 'pending') return;
+        const r = byName[g.name];
+        if (!r) return;
+        if (r.valid) {
+          g.status = 'valid';
+          g.era = r.era || '';
+          g.reason = r.reason || '';
+          // 自动纳入 selectedCharacters（幂等）
+          if (!selectedCharacters.some(c => c.name === g.name)) {
+            selectedCharacters.push({
+              name: g.name, era: g.era, reason: g.reason,
+            });
+          }
+        } else {
+          g.status = 'invalid';
+        }
+      });
+    } catch (err) {
+      setManualError('评审服务暂时不可用，请稍后再试');
+    } finally {
+      renderManualCards();
+      updateSelectionUI();
+    }
+  }
+
+  function renderManualCards() {
+    manualCards.innerHTML = manualGuests.map((g, i) => {
+      let statusText, statusEmoji;
+      if (g.status === 'pending') { statusEmoji = '⏳'; statusText = '待评审'; }
+      else if (g.status === 'valid') { statusEmoji = '✓'; statusText = '已通过'; }
+      else { statusEmoji = '❌'; statusText = FIXED_REJECTION; }
+
+      const eraLine = (g.status === 'valid' && g.era)
+        ? `<div class="mc-era">${escapeHtml(g.era)}</div>` : '';
+      const reasonLine = (g.status === 'valid' && g.reason)
+        ? `<div class="mc-status">${escapeHtml(g.reason)}</div>`
+        : `<div class="mc-status">${statusEmoji} ${escapeHtml(statusText)}</div>`;
+
+      return `
+        <div class="manual-card ${g.status}" data-index="${i}">
+          <div class="mc-remove" data-index="${i}" title="删除">×</div>
+          <div class="mc-name">${escapeHtml(g.name)}</div>
+          ${eraLine}
+          ${reasonLine}
+        </div>
+      `;
+    }).join('');
+
+    manualCards.querySelectorAll('.mc-remove').forEach(btn => {
+      btn.addEventListener('click', () => removeManualGuest(parseInt(btn.dataset.index, 10)));
+    });
+  }
+
+  function updateManualControls() {
+    const atManualCap = manualGuests.length >= MAX_MANUAL;
+    const atTotalCap = totalCount() >= MAX_SELECT;
+    btnAddGuest.disabled = atManualCap || atTotalCap;
+    manualInput.disabled = atManualCap || atTotalCap;
+
+    if (atManualCap) {
+      manualHint.textContent = `已达手动推荐上限（${MAX_MANUAL} 位）`;
+      manualHint.classList.remove('error');
+    } else if (atTotalCap) {
+      manualHint.textContent = `嘉宾已达上限 ${MAX_SELECT} 位`;
+      manualHint.classList.remove('error');
+    } else {
+      manualHint.textContent = '';
+      manualHint.classList.remove('error');
+    }
+  }
+
+  function setManualError(msg) {
+    manualHint.textContent = msg;
+    manualHint.classList.add('error');
+  }
+
+  function allSystemNames() {
+    return Array.from(document.querySelectorAll('#characters-grid .char-name'))
+      .map(el => el.textContent.trim());
+  }
+
+  function addManualGuest() {
+    const raw = manualInput.value.trim();
+    if (!raw) return;
+    if (raw.length > 20) { setManualError('人物名不能超过 20 字'); return; }
+    if (manualGuests.length >= MAX_MANUAL) { setManualError(`最多 ${MAX_MANUAL} 位`); return; }
+    if (totalCount() >= MAX_SELECT) { setManualError(`嘉宾已达上限 ${MAX_SELECT} 位`); return; }
+
+    const sysNames = allSystemNames();
+    if (sysNames.includes(raw) || manualGuests.some(g => g.name === raw)) {
+      setManualError('该嘉宾已在列表中');
+      return;
+    }
+
+    manualGuests.push({ name: raw, status: 'pending', era: '', reason: '' });
+    manualInput.value = '';
+    renderManualCards();
+    updateManualControls();
+    updateSelectionUI();
+  }
+
+  function removeManualGuest(index) {
+    const removed = manualGuests[index];
+    if (!removed) return;
+    manualGuests.splice(index, 1);
+    // 若被移除的是 valid，同步从 selectedCharacters 移除
+    if (removed.status === 'valid') {
+      const idx = selectedCharacters.findIndex(c => c.name === removed.name);
+      if (idx >= 0) selectedCharacters.splice(idx, 1);
+    }
+    renderManualCards();
+    updateManualControls();
+    updateSelectionUI();
+  }
+
+  btnAddGuest.addEventListener('click', addManualGuest);
+  manualInput.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') { e.preventDefault(); addManualGuest(); }
   });
 
   function escapeHtml(text) {
@@ -748,6 +1064,8 @@
     }
   }
 
+  renderManualCards();
+  updateManualControls();
   loadHistory();
 </script>
 {% endblock %}
