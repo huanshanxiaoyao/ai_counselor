@@ -5,6 +5,7 @@ import json
 import logging
 import re
 from concurrent.futures import ThreadPoolExecutor, as_completed
+from django.db.models import Q
 from django.http import JsonResponse
 from django.views import View
 from django.shortcuts import render
@@ -1022,7 +1023,12 @@ class HistoryListApiView(View):
     def get(self, request):
         """获取所有历史讨论"""
         try:
-            discussions = Discussion.objects.prefetch_related('characters').order_by('-created_at')
+            discussions = (
+                Discussion.objects
+                .filter(Q(visibility='public') | Q(owner=request.user))
+                .prefetch_related('characters')
+                .order_by('-created_at')
+            )
 
             history_list = []
             for d in discussions:
@@ -1042,6 +1048,8 @@ class HistoryListApiView(View):
                     'current_round': d.current_round,
                     'max_rounds': d.max_rounds,
                     'created_at': d.created_at.strftime('%Y-%m-%d %H:%M'),
+                    'visibility': d.visibility,
+                    'is_mine': d.owner_id == request.user.id,
                 })
 
             return JsonResponse({

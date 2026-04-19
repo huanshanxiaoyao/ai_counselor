@@ -1,5 +1,6 @@
 import pytest
 from django.contrib.auth import get_user_model
+from django.test import Client
 from backend.roundtable.models import Discussion
 
 
@@ -92,3 +93,42 @@ def test_start_rejects_invalid_visibility():
         content_type='application/json',
     )
     assert resp.status_code == 400
+
+
+@pytest.mark.django_db
+def test_history_hides_others_private():
+    User = get_user_model()
+    alice = User.objects.create_user(username='alice', password='p')
+    bob = User.objects.create_user(username='bob', password='p')
+    mine_public = Discussion.objects.create(topic='mp', owner=alice, visibility='public')
+    mine_private = Discussion.objects.create(topic='mpr', owner=alice, visibility='private')
+    bob_public = Discussion.objects.create(topic='bp', owner=bob, visibility='public')
+    bob_private = Discussion.objects.create(topic='bpr', owner=bob, visibility='private')
+    legacy = Discussion.objects.create(topic='leg')  # owner=None
+    client = Client()
+    client.force_login(alice)
+    resp = client.get('/roundtable/api/history/')
+    assert resp.status_code == 200
+    ids = {item['id'] for item in resp.json()['history']}
+    assert mine_public.id in ids
+    assert mine_private.id in ids
+    assert bob_public.id in ids
+    assert legacy.id in ids  # public (default) so visible
+    assert bob_private.id not in ids
+
+
+@pytest.mark.django_db
+def test_history_marks_is_mine_and_visibility():
+    User = get_user_model()
+    alice = User.objects.create_user(username='alice', password='p')
+    bob = User.objects.create_user(username='bob', password='p')
+    mine = Discussion.objects.create(topic='m', owner=alice, visibility='private')
+    bobs = Discussion.objects.create(topic='b', owner=bob, visibility='public')
+    client = Client()
+    client.force_login(alice)
+    resp = client.get('/roundtable/api/history/')
+    by_id = {item['id']: item for item in resp.json()['history']}
+    assert by_id[mine.id]['is_mine'] is True
+    assert by_id[mine.id]['visibility'] == 'private'
+    assert by_id[bobs.id]['is_mine'] is False
+    assert by_id[bobs.id]['visibility'] == 'public'

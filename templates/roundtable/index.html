@@ -1021,9 +1021,11 @@
         return;
       }
 
-      historyList.innerHTML = data.history.map(item => `
+      historyList.innerHTML = data.history.map(item => {
+        const lockIcon = (item.visibility === 'private' && item.is_mine) ? '🔒 ' : '';
+        return `
         <div class="history-item" data-id="${item.id}">
-          <div class="history-topic">${escapeHtml(item.topic)}</div>
+          <div class="history-topic">${lockIcon}${escapeHtml(item.topic)}</div>
           <div class="history-meta">
             <span class="history-status ${item.status}">${item.status === 'active' ? '进行中' : '已结束'}</span>
             <span>${item.current_round}/${item.max_rounds}轮</span>
@@ -1035,7 +1037,8 @@
             <button class="btn-restart" onclick="restartDiscussion(${item.id}, this)">重新开始</button>
           </div>
         </div>
-      `).join('');
+        `;
+      }).join('');
     } catch {
       historyList.innerHTML = '<div class="history-empty">加载失败</div>';
     }
