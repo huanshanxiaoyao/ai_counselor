@@ -680,6 +680,22 @@
       </div>
     </div>
 
+    <!-- Visibility setting -->
+    <div id="visibility-box" class="settings-box" style="display:none;">
+      <div class="settings-row">
+        <div class="settings-field">
+          <label>会谈可见性</label>
+          <div style="margin-top:6px;">
+            <label style="margin-right:16px;"><input type="radio" name="visibility" value="public" checked> 公开</label>
+            <label><input type="radio" name="visibility" value="private"> 仅自己可见</label>
+          </div>
+        </div>
+        <div class="settings-hint">
+          公开：所有人在历史列表里都能看到（别人打开时自动进入旁观模式）。<br>仅自己可见：历史列表中只有你能看到本次讨论。
+        </div>
+      </div>
+    </div>
+
     <!-- Start button -->
     <button id="btn-start" class="btn-start">开始讨论</button>
 
@@ -866,6 +882,7 @@
     }).join('');
 
     document.getElementById('settings-box').style.display = 'block';
+    document.getElementById('visibility-box').style.display = 'block';
     charsSection.classList.add('active');
     btnStart.classList.add('active');
   }
@@ -895,6 +912,8 @@
       const maxRounds = Math.max(5, Math.min(200,
         parseInt(document.getElementById('max-rounds-input')?.value) || 30));
 
+      const visibility = document.querySelector('input[name="visibility"]:checked')?.value || 'public';
+
       const charactersWithLlm = configuredCharacters.map((char, idx) => {
         const sel = document.getElementById(`llm-select-${idx}`);
         const val = sel ? sel.value : '';
@@ -908,7 +927,7 @@
       const response = await fetch('/roundtable/api/start/', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ topic, characters: charactersWithLlm, user_role: userRole, max_rounds: maxRounds }),
+        body: JSON.stringify({ topic, characters: charactersWithLlm, user_role: userRole, max_rounds: maxRounds, visibility }),
         signal: controller.signal
       });
 

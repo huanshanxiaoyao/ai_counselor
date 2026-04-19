@@ -297,7 +297,7 @@ class DiscussionView(View):
                         'is_user': m.is_user,
                         'created_at': m.created_at.isoformat(),
                     }
-                    for m in discussion.messages.all()
+                    for m in discussion.messages.select_related('character').all()
                 ],
             }
             return render(request, 'roundtable/discussion.html', context)
@@ -324,6 +324,10 @@ class DiscussionStartView(View):
             user_role = data.get('user_role', 'host')
             max_rounds = max(5, min(200, int(data.get('max_rounds', 30))))
 
+            visibility = data.get('visibility', 'public')
+            if visibility not in ('public', 'private'):
+                return JsonResponse({'error': '无效的可见性参数'}, status=400)
+
             if not topic:
                 return JsonResponse({'error': '话题不能为空'}, status=400)
 
@@ -336,6 +340,8 @@ class DiscussionStartView(View):
                 user_role=user_role,
                 status='active',
                 max_rounds=max_rounds,
+                owner=request.user,
+                visibility=visibility,
             )
 
             # 创建角色
@@ -459,18 +465,17 @@ class DiscussionStartView(View):
             discussion.save()
             logger.info(f"[Discussion {discussion.id}] Created successfully with {len(initial_responses)} initial responses")
 
-            # 启动后台任务：自动继续邀请角色发言
-            import threading
-            from .services.auto_continue import start_auto_continue
+            # observer 和 participant 模式都启动后台 AutoContinueService：
+            # - observer：完全自动，用户只读
+            # - participant：AI 自动讨论，用户可随时 @角色 插话
+            # host 模式由用户自己控制发言节奏，不需要后台线程。
+            if user_role in ('observer', 'participant'):
+                from .services.auto_continue import ensure_auto_continue_running
 
-            # 启动后台线程，使用新的 AutoContinueService
-            thread = threading.Thread(
-                target=start_auto_continue,
-                args=(discussion.id,),
-                daemon=True
-            )
-            thread.start()
-            logger.info(f"[AutoContinue] 已启动后台任务 for discussion {discussion.id}")
+                ensure_auto_continue_running(discussion.id)
+                logger.info(f"[AutoContinue] 已启动后台任务 for discussion {discussion.id} ({user_role} 模式)")
+            else:
+                logger.info(f"[AutoContinue] 未启动后台任务 for discussion {discussion.id} (host 模式，由用户控制)")
 
             return JsonResponse({
                 'discussion_id': discussion.id,
@@ -841,21 +846,18 @@ class DiscussionResumeApiView(View):
                     'error': f'讨论状态为 {discussion.status}，只有 active 状态可恢复'
                 }, status=400)
 
-            if discussion.user_role != 'observer':
+            if discussion.user_role not in ('observer', 'participant'):
                 return JsonResponse({
-                    'error': '只有旁观者模式（observer）的讨论才由后台线程驱动'
+                    'error': '只有旁观者/参与者模式的讨论才由后台线程驱动'
                 }, status=400)
 
-            import threading
-            from .services.auto_continue import start_auto_continue
+            from .services.auto_continue import ensure_auto_continue_running
 
-            thread = threading.Thread(
-                target=start_auto_continue,
-                args=(discussion.id,),
-                daemon=True
-            )
-            thread.start()
-            logger.info(f"[AutoContinue] 手动恢复后台任务 for discussion {discussion.id}")
+            started = ensure_auto_continue_running(discussion.id)
+            if started:
+                logger.info(f"[AutoContinue] 手动恢复后台任务 for discussion {discussion.id}")
+            else:
+                logger.info(f"[AutoContinue] 讨论 {discussion.id} 已有后台线程在运行，无需恢复")
 
             return JsonResponse({
                 'success': True,
@@ -1020,14 +1022,15 @@ class HistoryListApiView(View):
     def get(self, request):
         """获取所有历史讨论"""
         try:
-            discussions = Discussion.objects.all().order_by('-created_at')
+            discussions = Discussion.objects.prefetch_related('characters').order_by('-created_at')
 
             history_list = []
             for d in discussions:
-                characters = d.characters.all()
-                char_names = ', '.join([c.name for c in characters[:3]])
-                if characters.count() > 3:
-                    char_names += f' 等{characters.count()}人'
+                characters = list(d.characters.all())
+                character_count = len(characters)
+                char_names = ', '.join(c.name for c in characters[:3])
+                if character_count > 3:
+                    char_names += f' 等{character_count}人'
 
                 history_list.append({
                     'id': d.id,
@@ -1035,7 +1038,7 @@ class HistoryListApiView(View):
                     'status': d.status,
                     'user_role': d.user_role,
                     'character_names': char_names,
-                    'character_count': characters.count(),
+                    'character_count': character_count,
                     'current_round': d.current_round,
                     'max_rounds': d.max_rounds,
                     'created_at': d.created_at.strftime('%Y-%m-%d %H:%M'),
@@ -1151,14 +1154,8 @@ class RestartApiView(View):
             new_discussion.save()
 
             # 启动后台自动继续任务
-            import threading
-            from .services.auto_continue import start_auto_continue
-            thread = threading.Thread(
-                target=start_auto_continue,
-                args=(new_discussion.id,),
-                daemon=True
-            )
-            thread.start()
+            from .services.auto_continue import ensure_auto_continue_running
+            ensure_auto_continue_running(new_discussion.id)
 
             return JsonResponse({
                 'success': True,
@@ -1172,6 +1169,7 @@ class RestartApiView(View):
         except Exception as e:
             logger.exception("Error restarting discussion")
             return JsonResponse({'error': '服务器内部错误，请稍后重试'}, status=500)
+
 
 class ValidateGuestsView(View):
     """API endpoint - 校验用户手动推荐的嘉宾是否为有效人物"""
