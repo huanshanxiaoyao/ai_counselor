@@ -67,6 +67,18 @@ class DiscussionConsumer(AsyncWebsocketConsumer):
     """讨论 WebSocket Consumer - 处理实时讨论消息"""
 
     async def connect(self):
+        # Identity gate: authenticated user OR a session-bound guest_id (populated by
+        # GuestSessionMiddleware on any prior HTTP request). Reject only truly cookie-less
+        # connections — those are drive-bys that never loaded a page.
+        user = self.scope.get('user')
+        is_user = user is not None and getattr(user, 'is_authenticated', False)
+        session = self.scope.get('session')
+        guest_id = session.get('guest_id') if session else None
+        if not is_user and not guest_id:
+            await self.close(code=4401)
+            return
+        self.identity = user.username if is_user else f'guest:{guest_id}'
+
         self.discussion_id = self.scope['url_route']['kwargs']['discussion_id']
         self.room_group_name = f'discussion_{self.discussion_id}'
 
@@ -88,12 +100,19 @@ class DiscussionConsumer(AsyncWebsocketConsumer):
             'data': initial_data
         }))
 
+        # participant 模式：若进程内还没有后台 AutoContinueService，启动一个。
+        # 这让讨论在没有用户输入时也能自动推进，用户可以随时 @角色 插话。
+        # ensure_auto_continue_running 会与 views.py 的启动共享同一个注册表，
+        # 避免同一讨论被起两份线程导致主持人邀请语重复。
+        if (initial_data.get('user_role') == 'participant'
+                and initial_data.get('status') == 'active'):
+            from .services.auto_continue import ensure_auto_continue_running
+            ensure_auto_continue_running(int(self.discussion_id))
+
     async def disconnect(self, close_code):
-        # Leave room group
-        await self.channel_layer.group_discard(
-            self.room_group_name,
-            self.channel_name
-        )
+        room = getattr(self, 'room_group_name', None)
+        if room:
+            await self.channel_layer.group_discard(room, self.channel_name)
 
     async def receive(self, text_data):
         """接收客户端消息"""
@@ -329,9 +348,8 @@ class DiscussionConsumer(AsyncWebsocketConsumer):
                 'data': response
             }))
 
-        # 3. 自动继续讨论流程（角色发言结束后自动邀请下一位）
-        if responses and any(r.get('speaker') not in ['主持人', '你'] for r in responses):
-            await self._auto_continue_discussion()
+        # participant 模式由后台 AutoContinueService 负责推进后续轮次，
+        # 无需 consumer 在这里再额外驱动，避免与后台线程竞争 current_round。
 
     @database_sync_to_async
     def _save_and_broadcast_message(self, content: str, speaker: str,
@@ -1008,14 +1026,12 @@ class DiscussionConsumer(AsyncWebsocketConsumer):
                     'data': state
                 }))
 
-                # 递归检查是否继续（防止无限循环，这里限制最多3轮自动）
+                # 递归检查是否继续。背景 AutoContinueService 才是 observer 模式的主驱动；
+                # 在 host/participant 模式下，consumer 在本次用户输入触发的回合结束后停止递归，
+                # 等待下一次用户输入，避免与后台线程（若存在）争抢 current_round。
                 current_round = state.get('current_round', 0)
                 await self._send_debug_info(f"[状态] 当前轮次: {current_round}")
-
-                if current_round < 3:
-                    await self._auto_continue_discussion()
-                else:
-                    await self._send_debug_info(f"[自动继续] 已达自动继续上限({current_round}/3)，等待用户输入")
+                await self._send_debug_info(f"[自动继续] 本轮结束，等待用户输入或后台推进")
             else:
                 await self._send_debug_info(f"[错误] 获取 {next_char_name} 的发言失败")
 
@@ -1085,7 +1101,7 @@ class DiscussionConsumer(AsyncWebsocketConsumer):
         """获取对话历史（同步版本）"""
         from .models import Discussion
         discussion = Discussion.objects.get(id=self.discussion_id)
-        messages = list(discussion.messages.all())[-20:]
+        messages = list(discussion.messages.select_related('character').all())[-20:]
         history = []
         for msg in messages:
             speaker = msg.character.name if msg.character else '系统'
@@ -1161,7 +1177,12 @@ class DiscussionConsumer(AsyncWebsocketConsumer):
 
         try:
             discussion = Discussion.objects.get(id=self.discussion_id)
-            return discussion.user_role or 'participant'  # 默认是参与者
+            user = self.scope.get('user')
+            user_id = user.id if user is not None and getattr(user, 'is_authenticated', False) else None
+            effective_role = discussion.user_role or 'participant'
+            if discussion.owner_id and discussion.owner_id != user_id:
+                effective_role = 'observer'
+            return effective_role
         except Discussion.DoesNotExist:
             return 'participant'
 
@@ -1173,13 +1194,19 @@ class DiscussionConsumer(AsyncWebsocketConsumer):
         try:
             discussion = Discussion.objects.get(id=self.discussion_id)
             characters = list(discussion.characters.all())
-            messages = list(discussion.messages.all())
+            messages = list(discussion.messages.select_related('character').all())
+
+            user = self.scope.get('user')
+            user_id = user.id if user is not None and getattr(user, 'is_authenticated', False) else None
+            effective_role = discussion.user_role
+            if discussion.owner_id and discussion.owner_id != user_id:
+                effective_role = 'observer'
 
             return {
                 'discussion_id': discussion.id,
                 'topic': discussion.topic,
                 'status': discussion.status,
-                'user_role': discussion.user_role,
+                'user_role': effective_role,
                 'current_round': discussion.current_round,
                 'max_rounds': discussion.max_rounds,
                 'characters': [
@@ -1228,7 +1255,7 @@ class DiscussionConsumer(AsyncWebsocketConsumer):
 
     def _get_conversation_history(self, discussion, limit=10):
         """获取对话历史"""
-        messages = list(discussion.messages.all())[-(limit * 2):]
+        messages = list(discussion.messages.select_related('character').all())[-(limit * 2):]
         history = []
         for msg in messages:
             speaker = msg.character.name if msg.character else '系统'

@@ -132,3 +132,43 @@ def test_history_marks_is_mine_and_visibility():
     assert by_id[mine.id]['visibility'] == 'private'
     assert by_id[bobs.id]['is_mine'] is False
     assert by_id[bobs.id]['visibility'] == 'public'
+
+
+@pytest.mark.django_db
+def test_detail_view_downgrades_non_owner_to_observer():
+    User = get_user_model()
+    alice = User.objects.create_user(username='alice_dv1', password='p')
+    bob = User.objects.create_user(username='bob_dv1', password='p')
+    d = Discussion.objects.create(topic='t', user_role='host', owner=alice,
+                                  visibility='public', status='active')
+    client = Client()
+    client.force_login(bob)
+    resp = client.get(f'/roundtable/d/{d.id}/')
+    assert resp.status_code == 200
+    assert resp.context['user_role'] == 'observer'
+
+
+@pytest.mark.django_db
+def test_detail_view_keeps_owner_role():
+    User = get_user_model()
+    alice = User.objects.create_user(username='alice_dv2', password='p')
+    d = Discussion.objects.create(topic='t', user_role='participant', owner=alice,
+                                  visibility='public', status='active')
+    client = Client()
+    client.force_login(alice)
+    resp = client.get(f'/roundtable/d/{d.id}/')
+    assert resp.status_code == 200
+    assert resp.context['user_role'] == 'participant'
+
+
+@pytest.mark.django_db
+def test_detail_view_legacy_no_owner_uses_original_role():
+    User = get_user_model()
+    alice = User.objects.create_user(username='alice_dv3', password='p')
+    d = Discussion.objects.create(topic='t', user_role='host', owner=None,
+                                  visibility='public', status='active')
+    client = Client()
+    client.force_login(alice)
+    resp = client.get(f'/roundtable/d/{d.id}/')
+    assert resp.status_code == 200
+    assert resp.context['user_role'] == 'host'

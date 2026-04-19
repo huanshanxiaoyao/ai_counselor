@@ -269,6 +269,8 @@ class DiscussionView(View):
             characters = discussion.characters.all()
 
             user_role = discussion.user_role
+            if discussion.owner_id and discussion.owner_id != request.user.id:
+                user_role = 'observer'
 
             context = {
                 'discussion_id': discussion.id,
