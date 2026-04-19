@@ -337,13 +337,14 @@ class DiscussionStartView(View):
             if len(characters_data) < 3:
                 return JsonResponse({'error': '至少需要3个角色'}, status=400)
 
-            # 创建讨论
+            # 创建讨论（匿名访问时 owner 置空；FK 不接受 AnonymousUser 实例）
+            owner = request.user if request.user.is_authenticated else None
             discussion = Discussion.objects.create(
                 topic=topic,
                 user_role=user_role,
                 status='active',
                 max_rounds=max_rounds,
-                owner=request.user,
+                owner=owner,
                 visibility=visibility,
             )
 
@@ -1025,12 +1026,21 @@ class HistoryListApiView(View):
     def get(self, request):
         """获取所有历史讨论"""
         try:
-            discussions = (
-                Discussion.objects
-                .filter(Q(visibility='public') | Q(owner=request.user))
-                .prefetch_related('characters')
-                .order_by('-created_at')
-            )
+            # 匿名用户只看公开讨论；登录用户额外能看到自己的私密讨论
+            if request.user.is_authenticated:
+                discussions = (
+                    Discussion.objects
+                    .filter(Q(visibility='public') | Q(owner=request.user))
+                    .prefetch_related('characters')
+                    .order_by('-created_at')
+                )
+            else:
+                discussions = (
+                    Discussion.objects
+                    .filter(visibility='public')
+                    .prefetch_related('characters')
+                    .order_by('-created_at')
+                )
 
             history_list = []
             for d in discussions:
@@ -1051,7 +1061,10 @@ class HistoryListApiView(View):
                     'max_rounds': d.max_rounds,
                     'created_at': d.created_at.strftime('%Y-%m-%d %H:%M'),
                     'visibility': d.visibility,
-                    'is_mine': d.owner_id == request.user.id,
+                    'is_mine': bool(
+                        request.user.is_authenticated
+                        and d.owner_id == request.user.id
+                    ),
                 })
 
             return JsonResponse({
@@ -1085,13 +1098,14 @@ class RestartApiView(View):
                 return JsonResponse({'error': '原讨论没有角色配置'}, status=400)
 
             # 创建新讨论（强制 participant 角色，设置 owner 和 visibility）
+            owner = request.user if request.user.is_authenticated else None
             new_discussion = Discussion.objects.create(
                 topic=original.topic,
                 user_role='participant',
                 status='active',
                 max_rounds=original.max_rounds,
                 character_limit=original.character_limit,
-                owner=request.user,
+                owner=owner,
                 visibility=visibility,
             )
 

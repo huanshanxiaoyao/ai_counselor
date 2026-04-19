@@ -244,3 +244,72 @@ def test_restart_rejects_invalid_visibility():
         content_type='application/json',
     )
     assert resp.status_code == 400
+
+
+@pytest.mark.django_db
+def test_start_allows_anonymous_user_owner_none():
+    """匿名访问者创建讨论时 owner 应为 None，而不是报 500。"""
+    import json as _json
+    client = Client()
+    payload = {
+        'topic': 't',
+        'characters': [
+            {'name': f'c{i}', 'era': '', 'viewpoints': {}, 'language_style': {},
+             'temporal_constraints': {}}
+            for i in range(3)
+        ],
+        'user_role': 'observer',
+        'max_rounds': 5,
+    }
+    resp = client.post(
+        '/roundtable/api/start/', data=_json.dumps(payload),
+        content_type='application/json',
+    )
+    assert resp.status_code == 200, resp.content
+    d = Discussion.objects.get(id=resp.json()['discussion_id'])
+    assert d.owner is None
+    assert d.visibility == 'public'
+
+
+@pytest.mark.django_db
+def test_history_anonymous_sees_only_public():
+    User = get_user_model()
+    alice = User.objects.create_user(username='alice', password='p')
+    pub = Discussion.objects.create(topic='pub', owner=alice, visibility='public')
+    priv = Discussion.objects.create(topic='priv', owner=alice, visibility='private')
+    legacy = Discussion.objects.create(topic='leg')
+    client = Client()
+    resp = client.get('/roundtable/api/history/')
+    assert resp.status_code == 200
+    items = resp.json()['history']
+    ids = {i['id'] for i in items}
+    assert pub.id in ids
+    assert legacy.id in ids
+    assert priv.id not in ids
+    for it in items:
+        assert it['is_mine'] is False
+
+
+@pytest.mark.django_db
+def test_restart_allows_anonymous_user_owner_none():
+    User = get_user_model()
+    alice = User.objects.create_user(username='alice', password='p')
+    original = Discussion.objects.create(topic='t', user_role='host', owner=alice,
+                                         visibility='public', status='finished')
+    _restart_chars(original)
+    client = Client()
+    with patch(
+        'backend.roundtable.services.host_agent.HostAgent.generate_opening',
+        return_value='opening',
+    ), patch(
+        'backend.roundtable.services.auto_continue.ensure_auto_continue_running',
+        return_value=True,
+    ):
+        resp = client.post(
+            f'/roundtable/api/restart/{original.id}/',
+            data='{"visibility":"public"}',
+            content_type='application/json',
+        )
+    assert resp.status_code == 200, resp.content
+    new_id = resp.json()['new_discussion_id']
+    assert Discussion.objects.get(id=new_id).owner is None
