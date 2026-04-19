@@ -1,6 +1,7 @@
 """
 Database models for Roundtable Discussion.
 """
+from django.conf import settings
 from django.db import models
 
 
@@ -60,6 +61,23 @@ class Discussion(models.Model):
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
     ended_at = models.DateTimeField(null=True, blank=True)
+
+    class Visibility(models.TextChoices):
+        PUBLIC = 'public', '公开'
+        PRIVATE = 'private', '仅自己可见'
+
+    owner = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name='discussions',
+    )
+    visibility = models.CharField(
+        max_length=10,
+        choices=Visibility.choices,
+        default=Visibility.PUBLIC,
+    )
 
     class Meta:
         db_table = 'roundtable_discussions'
