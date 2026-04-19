@@ -1070,19 +1070,29 @@ class RestartApiView(View):
     def post(self, request, discussion_id):
         """复制原讨论配置，创建新讨论"""
         try:
+            data = json.loads(request.body.decode('utf-8') or '{}')
+        except json.JSONDecodeError:
+            data = {}
+        visibility = data.get('visibility', 'public')
+        if visibility not in ('public', 'private'):
+            return JsonResponse({'error': '无效的可见性参数'}, status=400)
+
+        try:
             original = Discussion.objects.get(id=discussion_id)
             original_chars = original.characters.all()
 
             if not original_chars:
                 return JsonResponse({'error': '原讨论没有角色配置'}, status=400)
 
-            # 创建新讨论（复制 topic 和 user_role）
+            # 创建新讨论（强制 participant 角色，设置 owner 和 visibility）
             new_discussion = Discussion.objects.create(
                 topic=original.topic,
-                user_role=original.user_role,
+                user_role='participant',
                 status='active',
                 max_rounds=original.max_rounds,
                 character_limit=original.character_limit,
+                owner=request.user,
+                visibility=visibility,
             )
 
             # 复制角色配置（直接复制字段，不调用 LLM）

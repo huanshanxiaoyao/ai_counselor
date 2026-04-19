@@ -1,4 +1,5 @@
 import pytest
+from unittest.mock import patch
 from django.contrib.auth import get_user_model
 from django.test import Client
 from backend.roundtable.models import Discussion
@@ -172,3 +173,74 @@ def test_detail_view_legacy_no_owner_uses_original_role():
     resp = client.get(f'/roundtable/d/{d.id}/')
     assert resp.status_code == 200
     assert resp.context['user_role'] == 'host'
+
+
+def _restart_chars(d):
+    from backend.roundtable.models import Character
+    Character.objects.create(
+        discussion=d, name='c1', viewpoints={}, language_style={}, temporal_constraints={},
+    )
+
+
+@pytest.mark.django_db
+def test_restart_forces_participant_and_sets_owner():
+    User = get_user_model()
+    alice = User.objects.create_user(username='alice', password='p')
+    bob = User.objects.create_user(username='bob', password='p')
+    original = Discussion.objects.create(topic='t', user_role='host', owner=alice,
+                                         visibility='public', status='finished')
+    _restart_chars(original)
+    client = Client()
+    client.force_login(bob)
+    with patch('backend.roundtable.services.host_agent.HostAgent.generate_opening',
+               return_value='欢迎参加讨论。'), \
+         patch('backend.roundtable.services.auto_continue.ensure_auto_continue_running'):
+        resp = client.post(
+            f'/roundtable/api/restart/{original.id}/',
+            data='{"visibility":"private"}',
+            content_type='application/json',
+        )
+    assert resp.status_code == 200, resp.content
+    new_id = resp.json()['new_discussion_id']
+    new_d = Discussion.objects.get(id=new_id)
+    assert new_d.user_role == 'participant'
+    assert new_d.owner_id == bob.id
+    assert new_d.visibility == 'private'
+
+
+@pytest.mark.django_db
+def test_restart_default_visibility_public_when_body_empty():
+    User = get_user_model()
+    alice = User.objects.create_user(username='alice', password='p')
+    original = Discussion.objects.create(topic='t', user_role='host', owner=alice,
+                                         visibility='private', status='finished')
+    _restart_chars(original)
+    client = Client()
+    client.force_login(alice)
+    with patch('backend.roundtable.services.host_agent.HostAgent.generate_opening',
+               return_value='欢迎参加讨论。'), \
+         patch('backend.roundtable.services.auto_continue.ensure_auto_continue_running'):
+        resp = client.post(
+            f'/roundtable/api/restart/{original.id}/',
+            data='',
+            content_type='application/json',
+        )
+    assert resp.status_code == 200, resp.content
+    new_id = resp.json()['new_discussion_id']
+    assert Discussion.objects.get(id=new_id).visibility == 'public'
+
+
+@pytest.mark.django_db
+def test_restart_rejects_invalid_visibility():
+    User = get_user_model()
+    alice = User.objects.create_user(username='alice', password='p')
+    original = Discussion.objects.create(topic='t', owner=alice, status='finished')
+    _restart_chars(original)
+    client = Client()
+    client.force_login(alice)
+    resp = client.post(
+        f'/roundtable/api/restart/{original.id}/',
+        data='{"visibility":"secret"}',
+        content_type='application/json',
+    )
+    assert resp.status_code == 400
