@@ -635,6 +635,56 @@
 .vd-actions button { padding: 6px 18px; border-radius: 4px; cursor: pointer; }
 .vd-cancel { background: transparent; border: 1px solid currentColor; color: inherit; }
 .vd-confirm { background: var(--gold); border: none; color: #1f1c14; }
+
+/* ── login required modal ── */
+.login-required-overlay {
+  position: fixed; inset: 0; background: rgba(0,0,0,0.55);
+  display: flex; align-items: center; justify-content: center;
+  z-index: 1100;
+}
+.login-required-dialog {
+  background: #1f1c14;
+  border: 1px solid var(--gold-border);
+  border-radius: 8px;
+  padding: 22px;
+  min-width: 360px;
+  max-width: 90vw;
+  color: var(--text);
+}
+.login-required-title {
+  font-size: 16px;
+  font-weight: 700;
+  color: var(--gold-light);
+  margin-bottom: 10px;
+}
+.login-required-text {
+  font-size: 13px;
+  line-height: 1.65;
+  color: var(--muted);
+  margin-bottom: 16px;
+}
+.login-required-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+}
+.btn-login-cancel,
+.btn-login-go {
+  padding: 6px 16px;
+  border-radius: 4px;
+  cursor: pointer;
+}
+.btn-login-cancel {
+  background: transparent;
+  border: 1px solid currentColor;
+  color: inherit;
+}
+.btn-login-go {
+  background: var(--gold);
+  border: none;
+  color: #1f1c14;
+  font-weight: 700;
+}
 </style>
 {% endblock %}
 
@@ -725,6 +775,7 @@
 
 {% block extra_js %}
 <script>
+  const isAuthenticated = {{ request.user.is_authenticated|yesno:"true,false" }};
   const MIN_SELECT = 3;
   const MAX_SELECT = 8;
   const MAX_MANUAL = 3;
@@ -783,7 +834,7 @@
     loadingIndicator.classList.add('active');
 
     try {
-      const response = await fetch('/roundtable/api/suggestions/', {
+      const response = await csrfFetch('/roundtable/api/suggestions/', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ topic: currentTopic })
@@ -887,7 +938,7 @@
     btnStart.textContent = '评审中…';
     let ok = false;
     try {
-      const resp = await fetch('/roundtable/api/validate-guests/', {
+      const resp = await csrfFetch('/roundtable/api/validate-guests/', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ topic: currentTopic, candidates: names }),
@@ -1032,7 +1083,7 @@
 
   async function loadHistory() {
     try {
-      const response = await fetch('/roundtable/api/history/');
+      const response = await csrfFetch('/roundtable/api/history/');
       if (!response.ok) throw new Error();
       const data = await response.json();
 
@@ -1068,6 +1119,31 @@
     window.location.href = `/roundtable/d/${id}/`;
   }
 
+  function getLoginRedirectUrl() {
+    const next = encodeURIComponent(window.location.pathname + window.location.search);
+    return `/accounts/login/?next=${next}`;
+  }
+
+  function showLoginRequiredModal() {
+    return new Promise(resolve => {
+      const overlay = document.createElement('div');
+      overlay.className = 'login-required-overlay';
+      overlay.innerHTML = `
+        <div class="login-required-dialog">
+          <div class="login-required-title">需要登录</div>
+          <div class="login-required-text">“仅自己可见”仅对登录用户开放。登录后即可创建私密讨论。</div>
+          <div class="login-required-actions">
+            <button type="button" class="btn-login-cancel">取消</button>
+            <button type="button" class="btn-login-go">去登录</button>
+          </div>
+        </div>`;
+      document.body.appendChild(overlay);
+      const cleanup = (v) => { overlay.remove(); resolve(v); };
+      overlay.querySelector('.btn-login-cancel').addEventListener('click', () => cleanup(false));
+      overlay.querySelector('.btn-login-go').addEventListener('click', () => cleanup(true));
+    });
+  }
+
   function showVisibilityDialog() {
     return new Promise(resolve => {
       const overlay = document.createElement('div');
@@ -1088,8 +1164,14 @@
       document.body.appendChild(overlay);
       const cleanup = (val) => { overlay.remove(); resolve(val); };
       overlay.querySelector('.vd-cancel').addEventListener('click', () => cleanup(null));
-      overlay.querySelector('.vd-confirm').addEventListener('click', () => {
+      overlay.querySelector('.vd-confirm').addEventListener('click', async () => {
         const v = overlay.querySelector('input[name="vd-vis"]:checked')?.value || 'public';
+        if (v === 'private' && !isAuthenticated) {
+          cleanup(null);
+          const goLogin = await showLoginRequiredModal();
+          if (goLogin) window.location.href = getLoginRedirectUrl();
+          return;
+        }
         cleanup(v);
       });
     });
@@ -1101,12 +1183,27 @@
     btn.disabled = true;
     btn.textContent = '创建中…';
     try {
-      const response = await fetch(`/roundtable/api/restart/${id}/`, {
+      const response = await csrfFetch(`/roundtable/api/restart/${id}/`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ visibility }),
       });
-      if (!response.ok) throw new Error('服务器错误: ' + response.status);
+      if (!response.ok) {
+        let msg = '服务器错误: ' + response.status;
+        let errData = {};
+        try { errData = await response.json(); } catch (_) {}
+        if (errData.error) msg = errData.error;
+        if (errData.error_code === 'quota_exceeded') {
+          const used = Number(errData.quota?.used_tokens || 0).toLocaleString();
+          const limit = Number(errData.quota?.quota_limit || 0).toLocaleString();
+          msg = `已超过 token 配额（${used}/${limit}），请联系管理员获取更多额度`;
+        }
+        if (response.status === 401 && errData.login_url) {
+          const goLogin = await showLoginRequiredModal();
+          if (goLogin) window.location.href = `${errData.login_url}?next=${encodeURIComponent(window.location.pathname + window.location.search)}`;
+        }
+        throw new Error(msg);
+      }
       const data = await response.json();
       if (data.error) throw new Error(data.error);
       window.location.href = `/roundtable/d/${data.new_discussion_id}/`;

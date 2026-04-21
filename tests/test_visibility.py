@@ -97,6 +97,28 @@ def test_start_rejects_invalid_visibility():
 
 
 @pytest.mark.django_db
+def test_start_rejects_anonymous_private_visibility():
+    import json as _json
+    client = Client()
+    payload = {
+        'topic': 't',
+        'characters': _minimal_chars(),
+        'user_role': 'observer',
+        'max_rounds': 5,
+        'visibility': 'private',
+    }
+    resp = client.post(
+        '/roundtable/api/start/',
+        data=_json.dumps(payload),
+        content_type='application/json',
+    )
+    assert resp.status_code == 401
+    data = resp.json()
+    assert 'login_url' in data
+    assert Discussion.objects.count() == 0
+
+
+@pytest.mark.django_db
 def test_history_hides_others_private():
     User = get_user_model()
     alice = User.objects.create_user(username='alice', password='p')
@@ -147,6 +169,30 @@ def test_detail_view_downgrades_non_owner_to_observer():
     resp = client.get(f'/roundtable/d/{d.id}/')
     assert resp.status_code == 200
     assert resp.context['user_role'] == 'observer'
+
+
+@pytest.mark.django_db
+def test_detail_view_blocks_private_discussion_for_non_owner():
+    User = get_user_model()
+    alice = User.objects.create_user(username='alice_dv_private1', password='p')
+    bob = User.objects.create_user(username='bob_dv_private1', password='p')
+    d = Discussion.objects.create(topic='t', user_role='host', owner=alice,
+                                  visibility='private', status='active')
+    client = Client()
+    client.force_login(bob)
+    resp = client.get(f'/roundtable/d/{d.id}/')
+    assert resp.status_code == 404
+
+
+@pytest.mark.django_db
+def test_detail_view_blocks_private_discussion_for_anonymous():
+    User = get_user_model()
+    alice = User.objects.create_user(username='alice_dv_private2', password='p')
+    d = Discussion.objects.create(topic='t', user_role='host', owner=alice,
+                                  visibility='private', status='active')
+    client = Client()
+    resp = client.get(f'/roundtable/d/{d.id}/')
+    assert resp.status_code == 404
 
 
 @pytest.mark.django_db
@@ -244,6 +290,24 @@ def test_restart_rejects_invalid_visibility():
         content_type='application/json',
     )
     assert resp.status_code == 400
+
+
+@pytest.mark.django_db
+def test_restart_rejects_anonymous_private_visibility():
+    User = get_user_model()
+    alice = User.objects.create_user(username='alice_restart_private', password='p')
+    original = Discussion.objects.create(topic='t', owner=alice, status='finished')
+    _restart_chars(original)
+    client = Client()
+    resp = client.post(
+        f'/roundtable/api/restart/{original.id}/',
+        data='{"visibility":"private"}',
+        content_type='application/json',
+    )
+    assert resp.status_code == 401
+    data = resp.json()
+    assert 'login_url' in data
+    assert Discussion.objects.filter(topic='t').count() == 1
 
 
 @pytest.mark.django_db

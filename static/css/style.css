@@ -40,6 +40,136 @@ body {
 .nav {
     display: flex;
     gap: 30px;
+    align-items: center;
+    flex-wrap: wrap;
+}
+
+.nav-auth {
+    margin-left: 12px;
+    display: inline-flex;
+    align-items: center;
+    gap: 12px;
+}
+
+.nav-quota {
+    margin-left: 8px;
+    border: 1px solid rgba(255, 255, 255, 0.22);
+    background: rgba(12, 24, 42, 0.45);
+    color: rgba(255, 255, 255, 0.88);
+    border-radius: 999px;
+    padding: 6px 10px;
+    font-size: 0.78rem;
+    cursor: pointer;
+    white-space: nowrap;
+}
+
+.nav-quota.warn80 {
+    border-color: rgba(255, 189, 89, 0.75);
+    color: #ffd79a;
+}
+
+.nav-quota.warn90 {
+    border-color: rgba(255, 138, 120, 0.82);
+    color: #ffd0c6;
+}
+
+.nav-quota.exceeded {
+    border-color: rgba(255, 116, 97, 0.9);
+    color: #ffb9ad;
+}
+
+.quota-modal {
+    position: fixed;
+    inset: 0;
+    background: rgba(2, 8, 19, 0.62);
+    display: none;
+    align-items: center;
+    justify-content: center;
+    z-index: 2600;
+    padding: 16px;
+}
+
+.quota-modal.active {
+    display: flex;
+}
+
+.quota-card {
+    width: min(560px, 100%);
+    background: #0f1d33;
+    color: #d9e8ff;
+    border: 1px solid rgba(131, 162, 211, 0.28);
+    border-radius: 12px;
+    box-shadow: 0 20px 55px rgba(0, 0, 0, 0.45);
+}
+
+.quota-card-head {
+    padding: 14px 16px;
+    border-bottom: 1px solid rgba(131, 162, 211, 0.2);
+    font-weight: 600;
+}
+
+.quota-card-body {
+    padding: 14px 16px 16px;
+}
+
+.quota-meta {
+    font-size: 0.86rem;
+    color: #b9cef0;
+    margin-bottom: 12px;
+}
+
+.quota-field {
+    margin-top: 10px;
+}
+
+.quota-field label {
+    display: block;
+    margin-bottom: 6px;
+    font-size: 0.82rem;
+    color: #a2bddf;
+}
+
+.quota-field input,
+.quota-field textarea {
+    width: 100%;
+    border-radius: 8px;
+    border: 1px solid rgba(131, 162, 211, 0.35);
+    background: rgba(255, 255, 255, 0.06);
+    color: #ebf2ff;
+    padding: 8px 10px;
+    font-size: 0.9rem;
+    outline: none;
+}
+
+.quota-field textarea {
+    min-height: 90px;
+    resize: vertical;
+}
+
+.quota-actions {
+    margin-top: 12px;
+    display: flex;
+    justify-content: flex-end;
+    gap: 8px;
+}
+
+.quota-btn {
+    border-radius: 8px;
+    border: 1px solid transparent;
+    cursor: pointer;
+    padding: 7px 12px;
+    font-size: 0.84rem;
+}
+
+.quota-btn.ghost {
+    background: rgba(255, 255, 255, 0.06);
+    border-color: rgba(131, 162, 211, 0.35);
+    color: #c8daf6;
+}
+
+.quota-btn.primary {
+    background: #2c73d6;
+    color: #fff;
 }
 
 .nav-link {
@@ -159,5 +289,13 @@ body {
 
     .tools-grid {
         grid-template-columns: 1fr;
+    }
+
+    .nav {
+        gap: 14px;
+    }
+
+    .nav-auth {
+        margin-left: 0;
     }
 }

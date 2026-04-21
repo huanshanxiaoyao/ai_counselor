@@ -426,7 +426,7 @@
     async function loadProfiles() {
         const container = document.getElementById('profiles-list');
         try {
-            const response = await fetch('/roundtable/api/profiles/');
+            const response = await csrfFetch('/roundtable/api/profiles/');
             const data = await response.json();
 
             if (data.profiles && data.profiles.length > 0) {
@@ -453,7 +453,7 @@
         const listContainer = document.getElementById('cache-list');
 
         try {
-            const response = await fetch('/roundtable/api/cache/stats/');
+            const response = await csrfFetch('/roundtable/api/cache/stats/');
             const data = await response.json();
 
             statsContainer.innerHTML = `
@@ -500,7 +500,7 @@
         modal.classList.add('active');
 
         try {
-            const response = await fetch(`/roundtable/api/profiles/${encodeURIComponent(name)}/`);
+            const response = await csrfFetch(`/roundtable/api/profiles/${encodeURIComponent(name)}/`);
             const data = await response.json();
 
             if (data.profile) {
@@ -561,7 +561,7 @@
         if (!confirm(`确定删除缓存: ${characterName} : ${topic}?`)) return;
 
         try {
-            const response = await fetch('/roundtable/api/cache/delete/', {
+            const response = await csrfFetch('/roundtable/api/cache/delete/', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ character_name: characterName, topic: topic })
@@ -578,7 +578,7 @@
         if (!confirm('确定清空所有缓存？这将导致热门人物+话题的设定需要重新生成。')) return;
 
         try {
-            const response = await fetch('/roundtable/api/cache/clear/', {
+            const response = await csrfFetch('/roundtable/api/cache/clear/', {
                 method: 'POST'
             });
             const data = await response.json();
@@ -596,7 +596,7 @@
         const listContainer = document.getElementById('candidate-list');
 
         try {
-            const response = await fetch('/roundtable/api/candidates/');
+            const response = await csrfFetch('/roundtable/api/candidates/');
             const data = await response.json();
 
             // Update stats
@@ -657,7 +657,7 @@
         if (!confirm(`确定触发生成 ${name} 的离线基础设定？\n这将需要较长时间。`)) return;
 
         try {
-            const response = await fetch('/roundtable/api/candidates/trigger/', {
+            const response = await csrfFetch('/roundtable/api/candidates/trigger/', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ name: name })
@@ -674,7 +674,7 @@
         if (!confirm(`确定重置 ${name} 的推荐计数？`)) return;
 
         try {
-            const response = await fetch('/roundtable/api/candidates/reset/', {
+            const response = await csrfFetch('/roundtable/api/candidates/reset/', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ name: name })
@@ -691,7 +691,7 @@
         if (!confirm(`确定从候选队列中移除 ${name}？`)) return;
 
         try {
-            const response = await fetch('/roundtable/api/candidates/delete/', {
+            const response = await csrfFetch('/roundtable/api/candidates/delete/', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ name: name })
@@ -708,7 +708,7 @@
         if (!confirm('确定清空所有候选角色？这不会删除已生成的离线设定。')) return;
 
         try {
-            const response = await fetch('/roundtable/api/candidates/clear/', {
+            const response = await csrfFetch('/roundtable/api/candidates/clear/', {
                 method: 'POST'
             });
             const data = await response.json();

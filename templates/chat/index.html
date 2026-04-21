@@ -38,6 +38,81 @@
             margin-top: 3px;
         }
 
+        .header-top {
+            display: flex;
+            justify-content: space-between;
+            gap: 12px;
+            align-items: center;
+        }
+
+        .quota-pill {
+            border: 1px solid rgba(255,255,255,0.35);
+            background: rgba(0,0,0,0.18);
+            color: #fff;
+            border-radius: 999px;
+            padding: 6px 10px;
+            font-size: 12px;
+            cursor: pointer;
+            white-space: nowrap;
+        }
+
+        .quota-pill.warn80 { border-color: #ffd166; color: #ffe9b6; }
+        .quota-pill.warn90 { border-color: #ff9f80; color: #ffd0bf; }
+        .quota-pill.exceeded { border-color: #ff6f61; color: #ffc3bc; }
+
+        .quota-modal {
+            position: fixed;
+            inset: 0;
+            background: rgba(0, 0, 0, 0.5);
+            display: none;
+            align-items: center;
+            justify-content: center;
+            z-index: 3000;
+            padding: 16px;
+        }
+
+        .quota-modal.active { display: flex; }
+
+        .quota-card {
+            width: min(520px, 100%);
+            background: #fff;
+            color: #333;
+            border-radius: 12px;
+            box-shadow: 0 24px 55px rgba(0,0,0,0.25);
+            padding: 16px;
+        }
+
+        .quota-title { font-size: 16px; font-weight: 600; margin-bottom: 8px; }
+        .quota-meta { font-size: 13px; color: #666; margin-bottom: 10px; }
+        .quota-card input, .quota-card textarea {
+            width: 100%;
+            border: 1px solid #ddd;
+            border-radius: 8px;
+            padding: 8px 10px;
+            margin-top: 8px;
+            font-size: 13px;
+            font-family: inherit;
+        }
+        .quota-card textarea { min-height: 86px; resize: vertical; }
+        .quota-actions {
+            display: flex;
+            justify-content: flex-end;
+            gap: 8px;
+            margin-top: 10px;
+        }
+        .quota-actions button {
+            border: 1px solid #ddd;
+            border-radius: 8px;
+            background: #fff;
+            padding: 7px 12px;
+            cursor: pointer;
+        }
+        .quota-actions .primary {
+            border-color: #4f7ed9;
+            background: #4f7ed9;
+            color: #fff;
+        }
+
         .main-container {
             flex: 1;
             display: flex;
@@ -492,8 +567,24 @@
 </head>
 <body>
     <div class="header">
-        <h1>AI Counselor - LLM 对比测试</h1>
+        <div class="header-top">
+            <h1>AI Counselor - LLM 对比测试</h1>
+            <button class="quota-pill" id="chat-quota-pill" type="button">Token --</button>
+        </div>
         <p>选择多个 LLM 提供商同时测试，比较响应时间和 token 消耗</p>
+    </div>
+
+    <div class="quota-modal" id="chat-quota-modal">
+        <div class="quota-card">
+            <div class="quota-title">Token 使用情况</div>
+            <div class="quota-meta" id="chat-quota-meta">加载中...</div>
+            <input id="chat-quota-contact" type="text" maxlength="120" placeholder="联系方式（可选）">
+            <textarea id="chat-quota-message" maxlength="500" placeholder="给管理员留言（可选）"></textarea>
+            <div class="quota-actions">
+                <button type="button" id="chat-quota-close">关闭</button>
+                <button type="button" class="primary" id="chat-quota-submit">联系管理员</button>
+            </div>
+        </div>
     </div>
 
     <div class="main-container">
@@ -529,6 +620,39 @@
         const providersData = {{ providers|safe }};
         let selectedProviders = {};
         let isToggling = {}; // 防止无限循环的标志
+        let quotaState = null;
+
+        function getCookie(name) {
+            const cookieStr = document.cookie || '';
+            const cookies = cookieStr.split(';');
+            for (const cookie of cookies) {
+                const item = cookie.trim();
+                if (item.startsWith(name + '=')) {
+                    return decodeURIComponent(item.slice(name.length + 1));
+                }
+            }
+            return '';
+        }
+
+        function csrfFetch(url, options = {}) {
+            const opts = { ...options };
+            const method = (opts.method || 'GET').toUpperCase();
+            const headers = new Headers(opts.headers || {});
+            if (!['GET', 'HEAD', 'OPTIONS', 'TRACE'].includes(method)) {
+                const token = getCookie('csrftoken');
+                if (token && !headers.has('X-CSRFToken')) {
+                    headers.set('X-CSRFToken', token);
+                }
+                if (!headers.has('X-Requested-With')) {
+                    headers.set('X-Requested-With', 'XMLHttpRequest');
+                }
+            }
+            opts.headers = headers;
+            if (!opts.credentials) {
+                opts.credentials = 'same-origin';
+            }
+            return fetch(url, opts);
+        }
 
         // Initialize
         function init() {
@@ -536,6 +660,82 @@
             setupQuickSelect();
             setupEventListeners();
             renderPanels();
+            initQuotaBadge();
+        }
+
+        function applyQuota(quota) {
+            if (!quota) return;
+            quotaState = quota;
+            const pill = document.getElementById('chat-quota-pill');
+            const meta = document.getElementById('chat-quota-meta');
+            if (!pill || !meta) return;
+            const used = Number(quota.used_tokens || 0).toLocaleString();
+            const limit = Number(quota.quota_limit || 0).toLocaleString();
+            const percent = Number(quota.used_percent || 0).toFixed(1);
+            pill.textContent = `Token ${used}/${limit}`;
+            pill.className = 'quota-pill';
+            if (quota.is_exceeded || Number(quota.used_percent || 0) >= 100) {
+                pill.classList.add('exceeded');
+            } else if (Number(quota.used_percent || 0) >= 90) {
+                pill.classList.add('warn90');
+            } else if (Number(quota.used_percent || 0) >= 80) {
+                pill.classList.add('warn80');
+            }
+            meta.textContent = `已使用 ${used} / ${limit}（${percent}%）`;
+        }
+
+        async function refreshQuota() {
+            try {
+                const resp = await csrfFetch('/roundtable/api/quota/status/');
+                if (!resp.ok) return;
+                const data = await resp.json();
+                applyQuota(data.quota);
+            } catch (_) {}
+        }
+
+        function initQuotaBadge() {
+            const pill = document.getElementById('chat-quota-pill');
+            const modal = document.getElementById('chat-quota-modal');
+            const closeBtn = document.getElementById('chat-quota-close');
+            const submitBtn = document.getElementById('chat-quota-submit');
+            const contactInput = document.getElementById('chat-quota-contact');
+            const messageInput = document.getElementById('chat-quota-message');
+            if (!pill || !modal) return;
+
+            const open = () => modal.classList.add('active');
+            const close = () => modal.classList.remove('active');
+            pill.addEventListener('click', open);
+            closeBtn.addEventListener('click', close);
+            modal.addEventListener('click', (e) => { if (e.target === modal) close(); });
+            submitBtn.addEventListener('click', async () => {
+                submitBtn.disabled = true;
+                try {
+                    const resp = await csrfFetch('/roundtable/api/quota/feedback/', {
+                        method: 'POST',
+                        headers: {'Content-Type': 'application/json'},
+                        body: JSON.stringify({
+                            contact: (contactInput.value || '').trim(),
+                            message: (messageInput.value || '').trim(),
+                        }),
+                    });
+                    if (resp.ok) {
+                        const data = await resp.json();
+                        if (data.quota) applyQuota(data.quota);
+                        messageInput.value = '';
+                        close();
+                    }
+                } finally {
+                    submitBtn.disabled = false;
+                }
+            });
+
+            refreshQuota();
+            setInterval(() => {
+                if (!document.hidden) refreshQuota();
+            }, 60000);
+            document.addEventListener('visibilitychange', () => {
+                if (!document.hidden) refreshQuota();
+            });
         }
 
         function renderProviders() {
@@ -812,7 +1012,7 @@
             }
 
             try {
-                const response = await fetch('/api/counselor/', {
+                const response = await csrfFetch('/api/counselor/', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({
@@ -829,6 +1029,9 @@
 
                 if (data.error) {
                     throw new Error(data.error);
+                }
+                if (data.quota) {
+                    applyQuota(data.quota);
                 }
 
                 const responses = data.responses || {};

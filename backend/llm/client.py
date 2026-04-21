@@ -129,6 +129,7 @@ class LLMClient:
             CompletionResult with text, usage, model info, etc.
         """
         resolved_model = model or self.provider.default_model
+        last_error: Optional[Exception] = None
         for attempt in range(self.max_retries):
             try:
                 start_time = time.time()
@@ -155,13 +156,14 @@ class LLMClient:
                     f"time={result.elapsed_seconds}s"
                 )
                 return result
-            except LLMTimeoutError:
+            except LLMTimeoutError as e:
+                last_error = e
                 if attempt == self.max_retries - 1:
                     raise
                 logger.warning(f"LLM timeout, retrying ({attempt + 1}/{self.max_retries})")
                 time.sleep(2 ** attempt)
             except LLMAPIError as e:
-                # Non-retryable: auth errors, bad requests — retrying won't help
+                last_error = e
                 if e.status_code in (400, 401, 403, 404):
                     logger.error(
                         f"LLM non-retryable error (status={e.status_code}): {e}"
@@ -174,6 +176,11 @@ class LLMClient:
                     f"retrying ({attempt + 1}/{self.max_retries})"
                 )
                 time.sleep(2 ** attempt)
+
+        raise LLMMaxRetriesExceededError(
+            f"LLM call failed after {self.max_retries} attempts "
+            f"(provider={self.provider.name}, model={resolved_model}): {last_error}"
+        )
 
 
 class OpenAIBackend:

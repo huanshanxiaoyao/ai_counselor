@@ -608,6 +608,60 @@
   from { opacity: 0; transform: translateY(8px); }
   to   { opacity: 1; transform: translateY(0); }
 }
+
+/* ── login required modal ── */
+.login-required-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,0.55);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1100;
+}
+.login-required-dialog {
+  width: min(420px, 90vw);
+  background: #1f1c14;
+  border: 1px solid var(--gold-border);
+  border-radius: 10px;
+  padding: 20px;
+  color: var(--text);
+}
+.login-required-title {
+  font-size: 1rem;
+  font-weight: 700;
+  color: var(--gold-light);
+  margin-bottom: 10px;
+}
+.login-required-text {
+  font-size: 0.88rem;
+  line-height: 1.65;
+  color: var(--muted);
+  margin-bottom: 16px;
+}
+.login-required-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+}
+.btn-login-cancel,
+.btn-login-go {
+  padding: 7px 14px;
+  border-radius: 6px;
+  font-size: 0.84rem;
+  cursor: pointer;
+}
+.btn-login-cancel {
+  background: transparent;
+  border: 1px solid rgba(255,255,255,0.22);
+  color: var(--text);
+}
+.btn-login-go {
+  background: var(--gold);
+  border: none;
+  color: #1f1c14;
+  font-weight: 700;
+}
 </style>
 {% endblock %}
 
@@ -709,6 +763,7 @@
   const topic      = "{{ topic|escapejs }}";
   const characters = JSON.parse("{{ characters_json|escapejs }}");
   const userRole   = "{{ user_role }}";
+  const isAuthenticated = {{ request.user.is_authenticated|yesno:"true,false" }};
   const llmOptions = JSON.parse("{{ llm_options_json|escapejs }}");
   const defaultLlmLabel = "{{ default_llm_label|escapejs }}";
 
@@ -725,6 +780,46 @@
   let configuredCharacters = [];
   let configureStartTime   = null;
 
+  function getLoginRedirectUrl() {
+    const next = encodeURIComponent(window.location.pathname + window.location.search);
+    return `/accounts/login/?next=${next}`;
+  }
+
+  function showLoginRequiredModal() {
+    return new Promise(resolve => {
+      const overlay = document.createElement('div');
+      overlay.className = 'login-required-overlay';
+      overlay.innerHTML = `
+        <div class="login-required-dialog">
+          <div class="login-required-title">需要登录</div>
+          <div class="login-required-text">“仅自己可见”仅对登录用户开放。登录后即可创建私密讨论。</div>
+          <div class="login-required-actions">
+            <button type="button" class="btn-login-cancel">取消</button>
+            <button type="button" class="btn-login-go">去登录</button>
+          </div>
+        </div>
+      `;
+      document.body.appendChild(overlay);
+      const close = (v) => {
+        overlay.remove();
+        resolve(v);
+      };
+      overlay.querySelector('.btn-login-cancel').addEventListener('click', () => close(false));
+      overlay.querySelector('.btn-login-go').addEventListener('click', () => close(true));
+    });
+  }
+
+  const visibilityRadios = () => document.querySelectorAll('input[name="visibility"]');
+  function ensurePrivateRequiresLogin(visibility) {
+    if (visibility !== 'private' || isAuthenticated) return Promise.resolve(false);
+    const publicRadio = document.querySelector('input[name="visibility"][value="public"]');
+    if (publicRadio) publicRadio.checked = true;
+    return showLoginRequiredModal().then(goLogin => {
+      if (goLogin) window.location.href = getLoginRedirectUrl();
+      return true;
+    });
+  }
+
   // ── configure ──
   btnConfigure.addEventListener('click', async () => {
     errorMsg.classList.remove('active');
@@ -736,7 +831,7 @@
     try {
       loadingProgress.textContent = `正在并行配置 ${characters.length} 位嘉宾…`;
 
-      const response = await fetch('/roundtable/api/configure/', {
+      const response = await csrfFetch('/roundtable/api/configure/', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ topic, characters })
@@ -913,6 +1008,11 @@
         parseInt(document.getElementById('max-rounds-input')?.value) || 30));
 
       const visibility = document.querySelector('input[name="visibility"]:checked')?.value || 'public';
+      if (await ensurePrivateRequiresLogin(visibility)) {
+        btnStart.disabled = false;
+        btnStart.textContent = '开始讨论';
+        return;
+      }
 
       const charactersWithLlm = configuredCharacters.map((char, idx) => {
         const sel = document.getElementById(`llm-select-${idx}`);
@@ -924,7 +1024,7 @@
         return char;
       });
 
-      const response = await fetch('/roundtable/api/start/', {
+      const response = await csrfFetch('/roundtable/api/start/', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ topic, characters: charactersWithLlm, user_role: userRole, max_rounds: maxRounds, visibility }),
@@ -934,9 +1034,19 @@
       clearTimeout(timeoutId);
 
       if (!response.ok) {
-        const txt = await response.text();
         let msg = `服务器错误 (${response.status})`;
-        try { msg = JSON.parse(txt).error || msg; } catch (_) {}
+        let errData = {};
+        try { errData = await response.json(); } catch (_) {}
+        if (errData.error) msg = errData.error;
+        if (errData.error_code === 'quota_exceeded') {
+          const used = Number(errData.quota?.used_tokens || 0).toLocaleString();
+          const limit = Number(errData.quota?.quota_limit || 0).toLocaleString();
+          msg = `已超过 token 配额（${used}/${limit}），请联系管理员获取更多额度`;
+        }
+        if (response.status === 401 && errData.login_url) {
+          const goLogin = await showLoginRequiredModal();
+          if (goLogin) window.location.href = `${errData.login_url}?next=${encodeURIComponent(window.location.pathname + window.location.search)}`;
+        }
         throw new Error(msg);
       }
 
@@ -957,6 +1067,13 @@
       btnStart.disabled = false;
       btnStart.textContent = '开始讨论';
     }
+  });
+
+  visibilityRadios().forEach(radio => {
+    radio.addEventListener('change', async (e) => {
+      if (!e.target.checked) return;
+      await ensurePrivateRequiresLogin(e.target.value);
+    });
   });
 
   function escapeHtml(text) {

@@ -5,7 +5,7 @@ import json
 import logging
 from typing import List, Dict
 
-from backend.llm import LLMClient
+from backend.llm import LLMClient, TokenUsage
 
 logger = logging.getLogger(__name__)
 
@@ -47,6 +47,12 @@ class DirectorAgent:
 
     def __init__(self, provider: str = None):
         self.client = LLMClient(provider_name=provider)
+        self.last_token_usage: TokenUsage | None = None
+
+    def _complete(self, **kwargs) -> str:
+        result = self.client.complete_with_metadata(**kwargs)
+        self.last_token_usage = result.usage
+        return result.text
 
     def suggest_characters(self, topic: str, count: int = 20) -> List[Dict]:
         """
@@ -61,7 +67,7 @@ class DirectorAgent:
         """
         prompt = self._build_suggestion_prompt(topic, count)
 
-        response = self.client.complete(
+        response = self._complete(
             prompt=prompt,
             system_prompt=self.SYSTEM_PROMPT,
             json_mode=True,
@@ -142,7 +148,7 @@ class DirectorAgent:
   "discussion_angles": ["角度1", "角度2", "角度3"]
 }}"""
 
-        response = self.client.complete(
+        response = self._complete(
             prompt=prompt,
             system_prompt=self.SYSTEM_PROMPT,
             json_mode=True,
@@ -169,7 +175,7 @@ class DirectorAgent:
         """
         prompt = self._build_validator_prompt(topic, names)
 
-        response = self.client.complete(
+        response = self._complete(
             prompt=prompt,
             system_prompt=self.VALIDATOR_SYSTEM_PROMPT,
             json_mode=True,

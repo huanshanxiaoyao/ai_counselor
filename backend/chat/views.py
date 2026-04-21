@@ -11,6 +11,13 @@ from django.views import View
 from django.shortcuts import render
 
 from backend.llm import LLMClient, LLMConfigurationError, get_all_providers
+from backend.roundtable.services.token_quota import (
+    QuotaExceededError,
+    ensure_within_quota_or_raise,
+    get_quota_snapshot,
+    record_token_usage,
+    subject_from_request,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -83,6 +90,16 @@ class ChatAPIView(View):
     def post(self, request):
         """Handle chat request with multiple AI responses."""
         try:
+            quota_subject = subject_from_request(request)
+            try:
+                ensure_within_quota_or_raise(quota_subject)
+            except QuotaExceededError as e:
+                return JsonResponse({
+                    'error': '已超过可用 token 配额，请联系管理员获取更多额度',
+                    'error_code': 'quota_exceeded',
+                    'quota': e.snapshot,
+                }, status=402)
+
             data = json.loads(request.body)
             prompt = data.get('prompt', '').strip()
             selected = data.get('providers', [])  # [{provider, model}, ...]
@@ -93,8 +110,8 @@ class ChatAPIView(View):
             if not selected:
                 return JsonResponse({'error': 'No providers selected'}, status=400)
 
-            results = self._get_ai_responses(prompt, selected)
-            return JsonResponse({'responses': results})
+            results = self._get_ai_responses(prompt, selected, quota_subject)
+            return JsonResponse({'responses': results, 'quota': get_quota_snapshot(quota_subject)})
 
         except json.JSONDecodeError:
             return JsonResponse({'error': 'Invalid JSON'}, status=400)
@@ -102,7 +119,7 @@ class ChatAPIView(View):
             logger.exception("Chat API error")
             return JsonResponse({'error': '服务器内部错误'}, status=500)
 
-    def _get_ai_responses(self, prompt: str, selected: list) -> dict:
+    def _get_ai_responses(self, prompt: str, selected: list, quota_subject) -> dict:
         """Get responses from selected AI providers concurrently."""
         results = {}
 
@@ -113,6 +130,7 @@ class ChatAPIView(View):
                     item['provider'],
                     prompt,
                     item.get('model'),
+                    quota_subject,
                 ): item['provider']  # Use provider name as key directly
                 for item in selected
             }
@@ -135,6 +153,17 @@ class ChatAPIView(View):
                         'error': None,
                     }
                 except Exception as e:
+                    if isinstance(e, QuotaExceededError):
+                        results[provider] = {
+                            'provider': provider,
+                            'name': PROVIDER_NAMES.get(provider, provider),
+                            'response': None,
+                            'model': '',
+                            'elapsed_seconds': 0,
+                            'usage': {'prompt_tokens': 0, 'completion_tokens': 0, 'total_tokens': 0},
+                            'error': 'quota_exceeded',
+                        }
+                        continue
                     results[provider] = {
                         'provider': provider,
                         'name': PROVIDER_NAMES.get(provider, provider),
@@ -147,13 +176,23 @@ class ChatAPIView(View):
 
         return results
 
-    def _get_single_response(self, provider: str, prompt: str, model: str = None) -> dict:
+    def _get_single_response(self, provider: str, prompt: str, model: str = None, quota_subject=None) -> dict:
         """Get response from a single AI provider with metadata."""
+        ensure_within_quota_or_raise(quota_subject)
         client = get_llm_client(provider)
         result = client.complete_with_metadata(
             prompt=prompt,
             system_prompt="你是一个有帮助的AI助手。请用简洁、清晰的语言回答用户的问题。",
             model=model or None,
+        )
+        record_token_usage(
+            subject=quota_subject,
+            source='chat.api.response',
+            total_tokens=result.usage.total_tokens,
+            prompt_tokens=result.usage.prompt_tokens,
+            completion_tokens=result.usage.completion_tokens,
+            provider=provider,
+            model=result.model,
         )
         return {
             'text': result.text,

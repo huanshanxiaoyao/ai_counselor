@@ -80,6 +80,31 @@
         background: #ff9800;
     }
 
+    .quota-badge {
+        padding: 6px 12px;
+        border-radius: 999px;
+        font-size: 0.8rem;
+        background: #eef7ff;
+        border: 1px solid #b6d8f5;
+        color: #1f4e79;
+        white-space: nowrap;
+    }
+    .quota-badge.warn80 {
+        background: #fff7e8;
+        border-color: #f7cf8f;
+        color: #9f6000;
+    }
+    .quota-badge.warn90 {
+        background: #ffeceb;
+        border-color: #ffb0aa;
+        color: #af1b13;
+    }
+    .quota-badge.exceeded {
+        background: #ffe3e0;
+        border-color: #ff9a92;
+        color: #9b1d17;
+    }
+
     @keyframes pulse {
         0%, 100% { opacity: 1; }
         50% { opacity: 0.5; }
@@ -138,6 +163,92 @@
 
     .btn-debug.active:hover {
         background: #ffe0b2;
+    }
+
+    .quota-modal {
+        position: fixed;
+        inset: 0;
+        background: rgba(10, 18, 32, 0.48);
+        display: none;
+        align-items: center;
+        justify-content: center;
+        z-index: 2200;
+        padding: 16px;
+    }
+    .quota-modal.active {
+        display: flex;
+    }
+    .quota-modal-card {
+        width: min(560px, 100%);
+        background: #fff;
+        border-radius: 14px;
+        box-shadow: 0 20px 48px rgba(11, 30, 62, 0.3);
+        overflow: hidden;
+    }
+    .quota-modal-head {
+        padding: 16px 20px;
+        border-bottom: 1px solid #edf1f8;
+        font-weight: 700;
+        color: #1a2c46;
+    }
+    .quota-modal-body {
+        padding: 16px 20px 20px;
+        color: #2a3f5f;
+        font-size: 0.92rem;
+    }
+    .quota-modal-meta {
+        background: #f6f9ff;
+        border: 1px solid #dce6f5;
+        border-radius: 10px;
+        padding: 10px 12px;
+        margin: 10px 0 14px;
+        font-size: 0.86rem;
+        color: #304a6b;
+    }
+    .quota-modal-field {
+        margin-bottom: 10px;
+    }
+    .quota-modal-field label {
+        display: block;
+        font-size: 0.82rem;
+        color: #486289;
+        margin-bottom: 6px;
+    }
+    .quota-modal-field input,
+    .quota-modal-field textarea {
+        width: 100%;
+        border: 1px solid #d4deeb;
+        border-radius: 8px;
+        padding: 8px 10px;
+        font-size: 0.9rem;
+        outline: none;
+        font-family: inherit;
+    }
+    .quota-modal-field textarea {
+        min-height: 92px;
+        resize: vertical;
+    }
+    .quota-modal-actions {
+        display: flex;
+        justify-content: flex-end;
+        gap: 10px;
+        margin-top: 8px;
+    }
+    .quota-btn {
+        border-radius: 8px;
+        border: 1px solid transparent;
+        cursor: pointer;
+        padding: 8px 14px;
+        font-size: 0.86rem;
+    }
+    .quota-btn.ghost {
+        background: #fff;
+        border-color: #d4deeb;
+        color: #33517a;
+    }
+    .quota-btn.primary {
+        background: #1f5cbf;
+        color: #fff;
     }
 
     /* 调试信息默认隐藏，通过开关控制 */
@@ -683,6 +794,7 @@
                 <span>🔄</span>
                 <span>轮次：<strong id="current-round">{{ current_round }}</strong>/{{ max_rounds }}</span>
             </div>
+            <div class="quota-badge" id="quota-badge">Token: --</div>
             <button class="btn-debug" id="btn-debug" title="显示/隐藏调试信息">🔍 调试</button>
             <button class="btn-export" id="btn-export" title="导出对话记录">📝 导出</button>
             <button class="btn-refresh" onclick="location.reload()">🔄 刷新</button>
@@ -790,6 +902,28 @@
         <div class="loading-subtext" id="loading-subtext">请稍候</div>
     </div>
 </div>
+
+<div class="quota-modal" id="quota-modal">
+    <div class="quota-modal-card">
+        <div class="quota-modal-head">Token 配额已用尽</div>
+        <div class="quota-modal-body">
+            当前已超过可用配额，暂时无法继续调用模型。请提交申请，管理员会在后台处理。
+            <div class="quota-modal-meta" id="quota-modal-meta"></div>
+            <div class="quota-modal-field">
+                <label for="quota-contact">联系方式（可选）</label>
+                <input id="quota-contact" type="text" maxlength="120" placeholder="邮箱/微信/电话">
+            </div>
+            <div class="quota-modal-field">
+                <label for="quota-message">补充说明（可选）</label>
+                <textarea id="quota-message" maxlength="500" placeholder="例如：使用场景、预计调用量"></textarea>
+            </div>
+            <div class="quota-modal-actions">
+                <button class="quota-btn ghost" id="quota-modal-close">稍后再说</button>
+                <button class="quota-btn primary" id="quota-modal-submit">提交给管理员</button>
+            </div>
+        </div>
+    </div>
+</div>
 {% endblock %}
 
 {% block extra_js %}
@@ -797,6 +931,7 @@
     const discussionId = {{ discussion_id }};
     const maxRounds = {{ max_rounds }};
     const topic = "{{ topic|escapejs }}";
+    const initialQuota = JSON.parse("{{ quota_json|escapejs }}");
 
     let selectedCharId = null;
     let selectedCharName = null;
@@ -813,6 +948,7 @@
     const currentRoundEl = document.getElementById('current-round');
     const statusBadge = document.getElementById('status-badge');
     const statusText = document.getElementById('status-text');
+    const quotaBadge = document.getElementById('quota-badge');
     const loadingOverlay = document.getElementById('loading-overlay');
     const loadingText = document.getElementById('loading-text');
     const loadingSubtext = document.getElementById('loading-subtext');
@@ -820,6 +956,12 @@
     const userRoleSelect = document.getElementById('user-role');
     const mentionDropdown = document.getElementById('mention-dropdown');
     const mentionList = document.getElementById('mention-list');
+    const quotaModal = document.getElementById('quota-modal');
+    const quotaModalMeta = document.getElementById('quota-modal-meta');
+    const quotaContactInput = document.getElementById('quota-contact');
+    const quotaMessageInput = document.getElementById('quota-message');
+    const quotaModalClose = document.getElementById('quota-modal-close');
+    const quotaModalSubmit = document.getElementById('quota-modal-submit');
 
     // Characters for @ mention（包括主持人和玩家）
     let characters = [
@@ -837,6 +979,9 @@
     let playerTokenHolder = '玩家';
     let currentRound = 0;
     let currentSpeaker = '';
+    let quotaState = initialQuota || null;
+    let quotaWarn80Shown = false;
+    let quotaWarn90Shown = false;
 
     // WebSocket reconnect state
     let wsReconnectAttempts = 0;
@@ -891,6 +1036,7 @@
                 statusText.textContent = state.status === 'active' ? '进行中' : '已结束';
                 statusBadge.className = 'status-badge ' + (state.status === 'active' ? 'active' : 'finished');
             }
+            if (state.quota) updateQuotaState(state.quota);
             if (state.current_round) currentRoundEl.textContent = state.current_round;
             scrollToBottom();
 
@@ -914,6 +1060,7 @@
             if (state.player_token_holder) {
                 console.log('[令牌] 玩家令牌持有者:', state.player_token_holder);
             }
+            if (state.quota) updateQuotaState(state.quota);
 
         } else if (data.type === 'debug_info') {
             // 调试信息
@@ -960,6 +1107,15 @@
                 scrollToBottom();
             }
             showNotification('讨论已结束', 'warning');
+
+        } else if (data.type === 'quota_exceeded') {
+            if (data.data && data.data.quota) {
+                updateQuotaState(data.data.quota);
+            }
+            showNotification('已超过 token 配额，请联系管理员', 'error');
+            showQuotaModal(data.data && data.data.quota ? data.data.quota : quotaState);
+            messageInput.disabled = true;
+            if (btnSend) btnSend.disabled = true;
 
         } else if (data.type === 'token_update') {
             // 令牌状态更新
@@ -1045,6 +1201,68 @@
         }, 3000);
     }
 
+    function updateQuotaState(nextQuota) {
+        if (!nextQuota) return;
+        quotaState = nextQuota;
+        if (typeof window.updateGlobalTokenQuota === 'function') {
+            window.updateGlobalTokenQuota(nextQuota);
+        }
+        const used = Number(quotaState.used_tokens || 0);
+        const limit = Number(quotaState.quota_limit || 0);
+        const percent = Number(quotaState.used_percent || 0);
+        quotaBadge.textContent = `Token ${used.toLocaleString()} / ${limit.toLocaleString()} (${percent.toFixed(1)}%)`;
+        quotaBadge.className = 'quota-badge';
+        if (quotaState.is_exceeded || percent >= 100) {
+            quotaBadge.classList.add('exceeded');
+        } else if (percent >= 90) {
+            quotaBadge.classList.add('warn90');
+            if (!quotaWarn90Shown) {
+                showNotification('Token 使用已超过 90%，请注意剩余额度', 'warning');
+                quotaWarn90Shown = true;
+            }
+        } else if (percent >= 80) {
+            quotaBadge.classList.add('warn80');
+            if (!quotaWarn80Shown) {
+                showNotification('Token 使用已超过 80%', 'info');
+                quotaWarn80Shown = true;
+            }
+        }
+    }
+
+    function showQuotaModal(quota) {
+        const q = quota || quotaState || {};
+        const used = Number(q.used_tokens || 0).toLocaleString();
+        const limit = Number(q.quota_limit || 0).toLocaleString();
+        quotaModalMeta.textContent = `当前累计消耗 ${used} / ${limit} token`;
+        quotaModal.classList.add('active');
+    }
+
+    async function submitQuotaFeedback() {
+        quotaModalSubmit.disabled = true;
+        try {
+            const resp = await fetch('/roundtable/api/quota/feedback/', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-CSRFToken': getCsrfToken(),
+                },
+                body: JSON.stringify({
+                    contact: quotaContactInput.value.trim(),
+                    message: quotaMessageInput.value.trim(),
+                }),
+            });
+            const data = await resp.json();
+            if (!resp.ok) throw new Error(data.error || '提交失败');
+            if (data.quota) updateQuotaState(data.quota);
+            showNotification('已提交给管理员，我们会尽快处理', 'info');
+            quotaModal.classList.remove('active');
+        } catch (err) {
+            showNotification(err.message || '提交失败，请稍后再试', 'error');
+        } finally {
+            quotaModalSubmit.disabled = false;
+        }
+    }
+
     // Select participant
     participantList.addEventListener('click', (e) => {
         const card = e.target.closest('.participant-card');
@@ -1085,9 +1303,11 @@
         updateUIForRole();
     });
 
-    // Send message via WebSocket
-    btnSend.addEventListener('click', sendMessage);
-    messageInput.addEventListener('keydown', (e) => {
+    // Send message via WebSocket (btnSend is not rendered for observers)
+    if (btnSend) {
+        btnSend.addEventListener('click', sendMessage);
+    }
+    if (messageInput) messageInput.addEventListener('keydown', (e) => {
         if (e.key === 'Enter' && !e.shiftKey && !e.isComposing) {
             e.preventDefault();
             if (mentionDropdown.classList.contains('active')) {
@@ -1254,11 +1474,18 @@
     }
 
     function sendMessage() {
+        if (!messageInput) return;
         const content = messageInput.value.trim();
         if (!content || isLoading) return;
 
         // Host/Participant mode: send message directly, backend handles @ mentions
         if (userRole === 'host' || userRole === 'participant') {
+            if (!ws || ws.readyState !== WebSocket.OPEN) {
+                // Socket closed/reconnecting — surface the state rather than silently dropping input
+                showLoading('连接已断开，正在重连...', '请稍候重试');
+                setTimeout(hideLoading, 1500);
+                return;
+            }
             showLoading('正在发送...', 'AI 正在思考中');
             ws.send(JSON.stringify({
                 type: 'user_message',
@@ -1419,6 +1646,11 @@
         return div.innerHTML;
     }
 
+    function getCsrfToken() {
+        const m = document.cookie.match(/(?:^|;\s*)csrftoken=([^;]+)/);
+        return m ? decodeURIComponent(m[1]) : '';
+    }
+
     // 导出对话记录功能
     function exportChatLog() {
         const chatMessages = messagesList.querySelectorAll('.chat-message');
@@ -1454,9 +1686,15 @@
 
     // 绑定导出按钮事件
     document.getElementById('btn-export').addEventListener('click', exportChatLog);
+    quotaModalClose.addEventListener('click', () => quotaModal.classList.remove('active'));
+    quotaModalSubmit.addEventListener('click', submitQuotaFeedback);
+    quotaModal.addEventListener('click', (e) => {
+        if (e.target === quotaModal) quotaModal.classList.remove('active');
+    });
 
     // Initial scroll to bottom
     scrollToBottom();
+    updateQuotaState(quotaState);
 
     // Initial UI update based on user role
     updateUIForRole();

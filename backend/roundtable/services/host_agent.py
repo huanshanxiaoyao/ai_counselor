@@ -7,7 +7,7 @@ import logging
 import re
 from typing import List, Dict, Optional, Tuple
 
-from backend.llm import LLMClient
+from backend.llm import LLMClient, TokenUsage
 
 logger = logging.getLogger(__name__)
 
@@ -38,6 +38,13 @@ class HostAgent:
 
     def __init__(self, provider: str = None):
         self.client = LLMClient(provider_name=provider)
+        self.last_token_usage: Optional[TokenUsage] = None
+
+    def _complete(self, **kwargs) -> str:
+        """LLM call wrapper that tracks token usage."""
+        result = self.client.complete_with_metadata(**kwargs)
+        self.last_token_usage = result.usage
+        return result.text
 
     def generate_opening(
         self,
@@ -84,7 +91,7 @@ class HostAgent:
 - 以"【主持人】"开头
 - 邀请角色时用"@角色名"格式"""
 
-        response = self.client.complete(
+        response = self._complete(
             prompt=prompt,
             system_prompt=self.SYSTEM_PROMPT,
         )
@@ -125,7 +132,7 @@ class HostAgent:
 {('可以呼应上一位的观点，自然过渡。' if transition else '保持引导性，让角色有发挥空间。')}
 引导角色围绕话题"{topic}"或其衍生方向展开。"""
 
-        response = self.client.complete(
+        response = self._complete(
             prompt=prompt,
             system_prompt=self.SYSTEM_PROMPT,
         )
@@ -267,7 +274,7 @@ class HostAgent:
 - 过渡语应帮助衔接上下文，同时引导发言者围绕话题及其相关延伸展开"""
 
         try:
-            response = self.client.complete(
+            response = self._complete(
                 prompt=prompt,
                 system_prompt=self.SYSTEM_PROMPT,
                 json_mode=True,
@@ -334,7 +341,7 @@ class HostAgent:
 
 保持中立和礼貌。"""
 
-        response = self.client.complete(
+        response = self._complete(
             prompt=prompt,
             system_prompt=self.SYSTEM_PROMPT,
         )
@@ -403,7 +410,7 @@ class HostAgent:
 
 以"【主持人总结】"开头。"""
 
-        response = self.client.complete(
+        response = self._complete(
             prompt=prompt,
             system_prompt=self.SYSTEM_PROMPT,
         )
@@ -445,7 +452,7 @@ class HostAgent:
 格式要求：
 - 以"【主持人】"开头"""
 
-        response = self.client.complete(
+        response = self._complete(
             prompt=prompt,
             system_prompt=self.SYSTEM_PROMPT,
         )

@@ -29,8 +29,11 @@ else:
 ALLOWED_HOSTS = os.getenv('ALLOWED_HOSTS', 'localhost,127.0.0.1').split(',')
 
 INSTALLED_APPS = [
+    'django.contrib.admin',
     'django.contrib.auth',
     'django.contrib.contenttypes',
+    'django.contrib.sessions',
+    'django.contrib.messages',
     'django.contrib.staticfiles',
     'rest_framework',
     'channels',
@@ -40,8 +43,20 @@ INSTALLED_APPS = [
 
 MIDDLEWARE = [
     'django.middleware.security.SecurityMiddleware',
+    'django.contrib.sessions.middleware.SessionMiddleware',
     'django.middleware.common.CommonMiddleware',
+    'django.middleware.csrf.CsrfViewMiddleware',
+    'django.contrib.auth.middleware.AuthenticationMiddleware',
+    'django.contrib.messages.middleware.MessageMiddleware',
+    'backend.config.middleware.GuestSessionMiddleware',
+    # NOTE: LoginRequiredMiddleware is intentionally NOT mounted — anonymous users
+    # are welcome. Use @login_required on individual views that require a real account.
 ]
+
+# Authentication
+LOGIN_URL = '/accounts/login/'
+LOGIN_REDIRECT_URL = '/'
+LOGOUT_REDIRECT_URL = '/accounts/login/'
 
 ROOT_URLCONF = 'backend.config.urls'
 
@@ -69,6 +84,9 @@ TEMPLATES = [
         'OPTIONS': {
             'context_processors': [
                 'django.template.context_processors.debug',
+                'django.template.context_processors.request',
+                'django.contrib.auth.context_processors.auth',
+                'django.contrib.messages.context_processors.messages',
             ],
             'loaders': _template_loaders,
         },
@@ -84,6 +102,7 @@ _redis_host = os.getenv('REDIS_HOST', 'localhost')
 _redis_port = int(os.getenv('REDIS_PORT', '6379'))
 try:
     import redis
+    import channels_redis  # noqa: F401 — verify installed before configuring backend
     r = redis.Redis(host=_redis_host, port=_redis_port, socket_connect_timeout=1)
     r.ping()
     CHANNEL_LAYERS = {
@@ -135,6 +154,9 @@ CORS_ALLOW_ALL_ORIGINS = DEBUG
 LLM_DEFAULT_PROVIDER = os.getenv('LLM_DEFAULT_PROVIDER', 'qwen')
 LLM_TIMEOUT = int(os.getenv('LLM_TIMEOUT', '12'))
 LLM_MAX_RETRIES = int(os.getenv('LLM_MAX_RETRIES', '3'))
+TOKEN_QUOTA_LIMIT = int(
+    os.getenv('TOKEN_QUOTA_LIMIT', '100000' if DEBUG else '1000000')
+)
 
 LLM_PROVIDERS = {
     'openai': {

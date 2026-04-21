@@ -1,0 +1,48 @@
+{% extends 'common/base.html' %}
+
+{% block title %}注册 - AI Tools{% endblock %}
+
+{% block content %}
+<section class="login-wrap" style="max-width: 420px; margin: 60px auto; padding: 32px; background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.08); border-radius: 12px;">
+    <h2 style="margin-bottom: 24px;">注册</h2>
+
+    {% if form.errors %}
+    <div style="margin-bottom: 16px; padding: 12px; background: rgba(255,107,107,0.12); border: 1px solid rgba(255,107,107,0.3); border-radius: 8px; color: #ff6b6b;">
+        {% for field, errors in form.errors.items %}
+            {% for error in errors %}
+            <div>{{ error }}</div>
+            {% endfor %}
+        {% endfor %}
+    </div>
+    {% endif %}
+
+    <form method="post" action="{% url 'signup' %}">
+        {% csrf_token %}
+        <div style="margin-bottom: 16px;">
+            <label for="id_username" style="display: block; margin-bottom: 6px;">用户名</label>
+            <input type="text" name="username" id="id_username" required autofocus value="{{ form.username.value|default:'' }}"
+                   style="width: 100%; padding: 10px; background: rgba(255,255,255,0.06); border: 1px solid rgba(255,255,255,0.15); border-radius: 6px; color: inherit;">
+        </div>
+        <div style="margin-bottom: 16px;">
+            <label for="id_password1" style="display: block; margin-bottom: 6px;">密码</label>
+            <input type="password" name="password1" id="id_password1" required
+                   style="width: 100%; padding: 10px; background: rgba(255,255,255,0.06); border: 1px solid rgba(255,255,255,0.15); border-radius: 6px; color: inherit;">
+        </div>
+        <div style="margin-bottom: 20px;">
+            <label for="id_password2" style="display: block; margin-bottom: 6px;">确认密码</label>
+            <input type="password" name="password2" id="id_password2" required
+                   style="width: 100%; padding: 10px; background: rgba(255,255,255,0.06); border: 1px solid rgba(255,255,255,0.15); border-radius: 6px; color: inherit;">
+        </div>
+        <input type="hidden" name="next" value="{{ next }}">
+        <button type="submit"
+                style="width: 100%; padding: 12px; background: #4ecdc4; color: #111; border: none; border-radius: 6px; font-weight: 600; cursor: pointer;">
+            创建账号
+        </button>
+    </form>
+
+    <p style="margin-top: 16px; font-size: 0.92em; opacity: 0.9;">
+        已有账号？
+        <a href="{% url 'login' %}{% if next %}?next={{ next|urlencode }}{% endif %}" style="color: #4ecdc4;">去登录</a>
+    </p>
+</section>
+{% endblock %}

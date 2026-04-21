@@ -3,6 +3,7 @@ Auto Continue Service - 自动继续讨论服务
 负责在开场白后自动邀请角色发言，实现完全自动化的讨论流程
 """
 import logging
+import threading
 import time
 from typing import Optional, Tuple, List, Dict
 
@@ -10,8 +11,23 @@ from django.db import close_old_connections
 
 from backend.llm import LLMClient
 from backend.roundtable.models import Discussion, Character, Message
+from backend.roundtable.services.token_quota import (
+    QuotaExceededError,
+    ensure_within_quota_or_raise,
+    parse_subject_key,
+    record_token_usage,
+    UsageSubject,
+)
 
 logger = logging.getLogger(__name__)
+
+# Process-wide registry of running AutoContinueService threads keyed by
+# discussion_id. Guarded by _registry_lock. Any caller that wants to spawn
+# a background thread for a discussion MUST go through
+# ensure_auto_continue_running() so we can't end up with two threads
+# generating invitations for the same round.
+_auto_continue_threads: dict[int, threading.Thread] = {}
+_registry_lock = threading.Lock()
 
 
 class AutoContinueService:
@@ -28,6 +44,7 @@ class AutoContinueService:
         self._discussion: Optional[Discussion] = None
         self._characters: List[Character] = []
         self._character_count: int = 0
+        self._usage_subject: Optional[UsageSubject] = None
 
     def run(self):
         """
@@ -38,6 +55,7 @@ class AutoContinueService:
             self._discussion = Discussion.objects.get(id=self.discussion_id)
             self._characters = list(self._discussion.characters.all())
             self._character_count = len(self._characters)
+            self._usage_subject = self._resolve_usage_subject()
 
             if self._character_count == 0:
                 logger.warning(f"[AutoContinue:{self.discussion_id}] 没有角色，停止")
@@ -63,6 +81,16 @@ class AutoContinueService:
                         self._run_llm_phase()
                     consecutive_errors = 0
                 except Exception as e:
+                    if isinstance(e, QuotaExceededError):
+                        self._broadcast({
+                            'type': 'quota_exceeded',
+                            'data': {
+                                'message': '已超过可用 token 配额，请联系管理员获取更多额度',
+                                'quota': e.snapshot,
+                            }
+                        })
+                        logger.warning(f"[AutoContinue:{self.discussion_id}] quota exceeded, stop auto-continue")
+                        break
                     consecutive_errors += 1
                     logger.error(f"[AutoContinue:{self.discussion_id}] 单轮错误 ({consecutive_errors}): {e}")
                     self._broadcast_debug(f"[警告] 本轮执行出错，将继续下一轮: {e}")
@@ -97,10 +125,26 @@ class AutoContinueService:
         """刷新讨论和角色状态"""
         self._discussion.refresh_from_db()
         self._characters = list(self._discussion.characters.all())
+        self._usage_subject = self._resolve_usage_subject()
+
+    def _resolve_usage_subject(self) -> UsageSubject:
+        if self._discussion and self._discussion.usage_subject:
+            return parse_subject_key(self._discussion.usage_subject)
+        if self._discussion and self._discussion.owner_id:
+            return UsageSubject(
+                key=f'user:{self._discussion.owner_id}',
+                subject_type='user',
+                user_id=self._discussion.owner_id,
+            )
+        return UsageSubject(
+            key=f'anon:discussion-{self.discussion_id}',
+            subject_type='anon',
+            anon_id=f'discussion-{self.discussion_id}',
+        )
 
     def _get_conversation_history(self, limit: int = 20) -> str:
         """获取对话历史"""
-        messages = list(self._discussion.messages.all())[-limit:]
+        messages = list(self._discussion.messages.select_related('character').all())[-limit:]
         lines = []
         for msg in messages:
             speaker = msg.character.name if msg.character else '系统'
@@ -155,12 +199,24 @@ class AutoContinueService:
 
         # 生成邀请语（不使用LLM，简单生成）
         from .host_agent import HostAgent
+        ensure_within_quota_or_raise(self._usage_subject)
         host = HostAgent()
         invitation = host.generate_invitation(
             character_name=char.name,
             topic=self._discussion.topic,
             conversation_history=history,
         )
+        if host.last_token_usage:
+            usage = host.last_token_usage
+            record_token_usage(
+                subject=self._usage_subject,
+                source='roundtable.auto.init_invitation',
+                total_tokens=usage.total_tokens,
+                prompt_tokens=usage.prompt_tokens,
+                completion_tokens=usage.completion_tokens,
+                discussion=self._discussion,
+                metadata={'character': char.name},
+            )
 
         # 保存邀请消息
         Message.objects.create(
@@ -202,6 +258,7 @@ class AutoContinueService:
         last_speaker = self._discussion.current_speaker or ''
 
         from .host_agent import HostAgent
+        ensure_within_quota_or_raise(self._usage_subject)
         host = HostAgent()
 
         # 关键改变：每一轮都使用LLM决策
@@ -214,6 +271,16 @@ class AutoContinueService:
             use_llm=True,  # 每次都用LLM
             round_count=self._discussion.current_round,
         )
+        if host.last_token_usage:
+            usage = host.last_token_usage
+            record_token_usage(
+                subject=self._usage_subject,
+                source='roundtable.auto.decide_next',
+                total_tokens=usage.total_tokens,
+                prompt_tokens=usage.prompt_tokens,
+                completion_tokens=usage.completion_tokens,
+                discussion=self._discussion,
+            )
 
         if not next_char_name:
             self._broadcast_debug(f"[LLM决策] 无法决定下一位发言者，停止")
@@ -230,12 +297,24 @@ class AutoContinueService:
             return
 
         # 生成邀请语
+        ensure_within_quota_or_raise(self._usage_subject)
         invitation = host.generate_invitation(
             character_name=next_char_name,
             topic=self._discussion.topic,
             conversation_history=history,
             transition=transition,
         )
+        if host.last_token_usage:
+            usage = host.last_token_usage
+            record_token_usage(
+                subject=self._usage_subject,
+                source='roundtable.auto.invitation',
+                total_tokens=usage.total_tokens,
+                prompt_tokens=usage.prompt_tokens,
+                completion_tokens=usage.completion_tokens,
+                discussion=self._discussion,
+                metadata={'character': next_char_name},
+            )
 
         # 保存邀请消息
         Message.objects.create(
@@ -278,6 +357,7 @@ class AutoContinueService:
 
         char.refresh_from_db()
         character_agent = CharacterAgent(provider=char.llm_provider or None)
+        ensure_within_quota_or_raise(self._usage_subject)
 
         try:
             speech = character_agent.generate_speech(
@@ -308,9 +388,21 @@ class AutoContinueService:
 
         # 累计 token 消耗到 Discussion
         if character_agent.last_token_usage:
+            usage = character_agent.last_token_usage
             from django.db.models import F
             Discussion.objects.filter(id=self.discussion_id).update(
-                total_tokens=F('total_tokens') + character_agent.last_token_usage.total_tokens
+                total_tokens=F('total_tokens') + usage.total_tokens
+            )
+            record_token_usage(
+                subject=self._usage_subject,
+                source='roundtable.auto.character_speech',
+                total_tokens=usage.total_tokens,
+                prompt_tokens=usage.prompt_tokens,
+                completion_tokens=usage.completion_tokens,
+                provider=char.llm_provider or '',
+                model=char.llm_model or '',
+                discussion=self._discussion,
+                metadata={'character': char.name},
             )
 
         # 保存角色发言
@@ -407,11 +499,22 @@ class AutoContinueService:
 
             # 生成结束语
             host = HostAgent()
+            ensure_within_quota_or_raise(self._usage_subject)
             closing = host.generate_closing(
                 topic=self._discussion.topic,
                 characters=[{'name': c.name} for c in self._characters],
                 discussion_summary="讨论已达到最大轮次"
             )
+            if host.last_token_usage:
+                usage = host.last_token_usage
+                record_token_usage(
+                    subject=self._usage_subject,
+                    source='roundtable.auto.closing',
+                    total_tokens=usage.total_tokens,
+                    prompt_tokens=usage.prompt_tokens,
+                    completion_tokens=usage.completion_tokens,
+                    discussion=self._discussion,
+                )
 
             # 保存结束语消息
             Message.objects.create(
@@ -469,10 +572,42 @@ class AutoContinueService:
 
 def start_auto_continue(discussion_id: int):
     """
-    启动自动继续任务的入口函数
-
-    Args:
-        discussion_id: 讨论ID
+    直接运行 AutoContinueService（同步），仅供 thread target 使用。
+    外部调用方请使用 ensure_auto_continue_running()。
     """
-    service = AutoContinueService(discussion_id)
-    service.run()
+    try:
+        service = AutoContinueService(discussion_id)
+        service.run()
+    finally:
+        # 线程结束后从注册表移除，允许后续重启
+        with _registry_lock:
+            _auto_continue_threads.pop(discussion_id, None)
+
+
+def ensure_auto_continue_running(discussion_id: int) -> bool:
+    """
+    幂等启动讨论的后台自动推进线程。
+
+    若进程内已有此 discussion 的线程存活，直接返回 False（不重复启动）；
+    否则启动新线程并返回 True。
+
+    多处调用方（views 创建讨论、consumer 建立 WS、restart/resume API）共用
+    这个入口，避免多个线程同时为同一讨论生成主持人邀请语。
+    """
+    with _registry_lock:
+        existing = _auto_continue_threads.get(discussion_id)
+        if existing is not None and existing.is_alive():
+            logger.info(
+                f"[AutoContinue:{discussion_id}] 已有存活线程，跳过重复启动"
+            )
+            return False
+
+        thread = threading.Thread(
+            target=start_auto_continue,
+            args=(discussion_id,),
+            daemon=True,
+        )
+        _auto_continue_threads[discussion_id] = thread
+        thread.start()
+        logger.info(f"[AutoContinue:{discussion_id}] 启动后台线程")
+        return True

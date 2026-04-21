@@ -32,4 +32,6 @@ urlpatterns = [
     path('api/history/', views.HistoryListApiView.as_view(), name='history_list'),
     path('api/restart/<int:discussion_id>/', views.RestartApiView.as_view(), name='restart'),
     path('api/d/<int:discussion_id>/resume/', views.DiscussionResumeApiView.as_view(), name='resume'),
+    path('api/quota/status/', views.QuotaStatusApiView.as_view(), name='quota_status'),
+    path('api/quota/feedback/', views.QuotaFeedbackApiView.as_view(), name='quota_feedback'),
 ]

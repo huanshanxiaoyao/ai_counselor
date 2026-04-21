@@ -78,6 +78,12 @@ class Discussion(models.Model):
         choices=Visibility.choices,
         default=Visibility.PUBLIC,
     )
+    usage_subject = models.CharField(
+        max_length=120,
+        blank=True,
+        default='',
+        db_index=True,
+    )
 
     class Meta:
         db_table = 'roundtable_discussions'
@@ -170,3 +176,128 @@ class Message(models.Model):
     def __str__(self):
         speaker = self.character.name if self.character else '系统'
         return f"{speaker}: {self.content[:50]}..."
+
+
+class TokenQuotaState(models.Model):
+    """主体维度的 token 配额聚合状态"""
+
+    class SubjectType(models.TextChoices):
+        USER = 'user', '登录用户'
+        ANON = 'anon', '匿名用户'
+
+    subject_key = models.CharField(max_length=120, unique=True)
+    subject_type = models.CharField(max_length=10, choices=SubjectType.choices)
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        null=True,
+        blank=True,
+        on_delete=models.CASCADE,
+        related_name='token_quota_states',
+    )
+    anon_id = models.CharField(max_length=64, blank=True, default='')
+    used_tokens = models.BigIntegerField(default=0)
+    quota_limit = models.BigIntegerField(default=0)
+    last_warn_level = models.IntegerField(default=0)  # 0 / 80 / 90 / 100
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        db_table = 'roundtable_token_quota_states'
+        indexes = [
+            models.Index(fields=['subject_type', 'updated_at']),
+        ]
+
+    def __str__(self):
+        return f"{self.subject_key}: {self.used_tokens}/{self.quota_limit}"
+
+
+class TokenUsageLedger(models.Model):
+    """token 消耗流水"""
+
+    class SubjectType(models.TextChoices):
+        USER = 'user', '登录用户'
+        ANON = 'anon', '匿名用户'
+
+    subject_key = models.CharField(max_length=120, db_index=True)
+    subject_type = models.CharField(max_length=10, choices=SubjectType.choices)
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name='token_usage_ledgers',
+    )
+    anon_id = models.CharField(max_length=64, blank=True, default='')
+    discussion = models.ForeignKey(
+        Discussion,
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name='token_usages',
+    )
+    source = models.CharField(max_length=64, default='unknown')
+    provider = models.CharField(max_length=64, blank=True, default='')
+    model = models.CharField(max_length=128, blank=True, default='')
+    prompt_tokens = models.IntegerField(default=0)
+    completion_tokens = models.IntegerField(default=0)
+    total_tokens = models.IntegerField(default=0)
+    request_id = models.CharField(max_length=100, blank=True, default='')
+    metadata = models.JSONField(default=dict, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        db_table = 'roundtable_token_usage_ledger'
+        indexes = [
+            models.Index(fields=['subject_key', 'created_at']),
+            models.Index(fields=['source', 'created_at']),
+        ]
+
+    def __str__(self):
+        return f"{self.subject_key} +{self.total_tokens} ({self.source})"
+
+
+class QuotaFeedback(models.Model):
+    """超额后反馈给管理员的申请记录"""
+
+    class SubjectType(models.TextChoices):
+        USER = 'user', '登录用户'
+        ANON = 'anon', '匿名用户'
+
+    class Status(models.TextChoices):
+        NEW = 'new', '待处理'
+        IN_PROGRESS = 'in_progress', '处理中'
+        RESOLVED = 'resolved', '已处理'
+
+    subject_key = models.CharField(max_length=120, db_index=True)
+    subject_type = models.CharField(max_length=10, choices=SubjectType.choices)
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name='quota_feedbacks',
+    )
+    anon_id = models.CharField(max_length=64, blank=True, default='')
+    contact = models.CharField(max_length=120, blank=True, default='')
+    message = models.TextField(blank=True, default='')
+    status = models.CharField(
+        max_length=20,
+        choices=Status.choices,
+        default=Status.NEW,
+    )
+    used_tokens = models.BigIntegerField(default=0)
+    quota_limit = models.BigIntegerField(default=0)
+    admin_note = models.TextField(blank=True, default='')
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+    resolved_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        db_table = 'roundtable_quota_feedback'
+        indexes = [
+            models.Index(fields=['status', 'created_at']),
+            models.Index(fields=['subject_key', 'created_at']),
+        ]
+
+    def __str__(self):
+        return f"{self.subject_key} [{self.status}]"

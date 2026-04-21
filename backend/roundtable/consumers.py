@@ -5,9 +5,18 @@ Supports three user roles: host, participant, observer
 import json
 import logging
 import re
+from typing import Optional
 from channels.generic.websocket import AsyncWebsocketConsumer
 from channels.db import database_sync_to_async
 from asgiref.sync import sync_to_async
+from backend.roundtable.services.token_quota import (
+    QuotaExceededError,
+    ensure_within_quota_or_raise,
+    get_quota_snapshot,
+    parse_subject_key,
+    record_token_usage,
+    subject_from_scope,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -67,6 +76,8 @@ class DiscussionConsumer(AsyncWebsocketConsumer):
     """讨论 WebSocket Consumer - 处理实时讨论消息"""
 
     async def connect(self):
+        self.discussion_id = self.scope['url_route']['kwargs']['discussion_id']
+
         # Identity gate: authenticated user OR a session-bound guest_id (populated by
         # GuestSessionMiddleware on any prior HTTP request). Reject only truly cookie-less
         # connections — those are drive-bys that never loaded a page.
@@ -78,8 +89,15 @@ class DiscussionConsumer(AsyncWebsocketConsumer):
             await self.close(code=4401)
             return
         self.identity = user.username if is_user else f'guest:{guest_id}'
+        self.usage_subject = subject_from_scope(self.scope)
 
-        self.discussion_id = self.scope['url_route']['kwargs']['discussion_id']
+        if not await self._can_access_discussion():
+            await self.close(code=4403)
+            return
+        discussion_subject = await self._get_discussion_usage_subject()
+        if discussion_subject:
+            self.usage_subject = discussion_subject
+
         self.room_group_name = f'discussion_{self.discussion_id}'
 
         # Token 统计（本次 WS 连接期间的 LLM 消耗）
@@ -146,6 +164,11 @@ class DiscussionConsumer(AsyncWebsocketConsumer):
 
         if not content:
             return
+        try:
+            await self._ensure_quota()
+        except QuotaExceededError as e:
+            await self._send_quota_exceeded(e.snapshot)
+            return
 
         # 获取用户角色
         user_role = await self.get_user_role()
@@ -210,6 +233,8 @@ class DiscussionConsumer(AsyncWebsocketConsumer):
         # 2. 如果@了角色，让该角色回复
         if mentioned:
             char_response = await self._get_character_response(mentioned, content)
+            if char_response and char_response.get('error_code') == 'quota_exceeded':
+                return
             if char_response:
                 responses.append(char_response)
 
@@ -288,6 +313,8 @@ class DiscussionConsumer(AsyncWebsocketConsumer):
             if mentioned == '主持人':
                 # @主持人：让主持人回应玩家
                 host_response = await self._get_host_response_to_player(content)
+                if host_response and host_response.get('error_code') == 'quota_exceeded':
+                    return
                 if host_response:
                     responses.append(host_response)
             else:
@@ -296,6 +323,9 @@ class DiscussionConsumer(AsyncWebsocketConsumer):
 
                 # 获取角色回复（角色AI决定是否回复）
                 char_response, declined = await self._get_character_response_with_decline(mentioned, content)
+                if char_response and char_response.get('error_code') == 'quota_exceeded':
+                    await self._return_player_token()
+                    return
 
                 if declined:
                     # 角色婉拒，发送"已读未回"通知
@@ -324,6 +354,8 @@ class DiscussionConsumer(AsyncWebsocketConsumer):
                 should_respond = await self._should_host_respond(content)
                 if should_respond:
                     host_response = await self._get_host_response_to_player(content)
+                    if host_response and host_response.get('error_code') == 'quota_exceeded':
+                        return
                     if host_response:
                         responses.append(host_response)
 
@@ -488,8 +520,20 @@ class DiscussionConsumer(AsyncWebsocketConsumer):
             return speech, token_total
 
         try:
+            await self._ensure_quota()
             speech, token_total = await sync_to_async(_llm_call)()
+            if token_total:
+                await self._record_quota_usage(
+                    source='roundtable.ws.character_reply',
+                    total_tokens=token_total,
+                    provider=data['llm_provider'] or '',
+                    model=data['llm_model'] or '',
+                    metadata={'character': data['char_name']},
+                )
         except Exception as e:
+            if isinstance(e, QuotaExceededError):
+                await self._send_quota_exceeded(e.snapshot)
+                return {'error_code': 'quota_exceeded'}
             logger.error(f"Error generating speech for {character_name}: {e}")
             return None
 
@@ -552,8 +596,20 @@ class DiscussionConsumer(AsyncWebsocketConsumer):
                 return speech, 0, True
 
         try:
+            await self._ensure_quota()
             speech, token_total, declined = await sync_to_async(_llm_call)()
+            if token_total:
+                await self._record_quota_usage(
+                    source='roundtable.ws.character_reply_with_decline',
+                    total_tokens=token_total,
+                    provider=data['llm_provider'] or '',
+                    model=data['llm_model'] or '',
+                    metadata={'character': data['char_name']},
+                )
         except Exception as e:
+            if isinstance(e, QuotaExceededError):
+                await self._send_quota_exceeded(e.snapshot)
+                return {'error_code': 'quota_exceeded'}, False
             logger.error(f"Error generating character response with decline for {character_name}: {e}")
             return None, False
 
@@ -646,6 +702,18 @@ class DiscussionConsumer(AsyncWebsocketConsumer):
         """获取讨论对象"""
         from .models import Discussion
         return Discussion.objects.get(id=self.discussion_id)
+
+    @database_sync_to_async
+    def _get_discussion_usage_subject(self):
+        """优先使用讨论绑定的主体，确保后台续聊和前端会话记到同一主体。"""
+        from .models import Discussion
+        try:
+            discussion = Discussion.objects.get(id=self.discussion_id)
+        except Discussion.DoesNotExist:
+            return None
+        if not discussion.usage_subject:
+            return None
+        return parse_subject_key(discussion.usage_subject)
 
     # 玩家令牌管理方法
     @database_sync_to_async
@@ -762,6 +830,51 @@ class DiscussionConsumer(AsyncWebsocketConsumer):
             logger.error(f"Error checking init phase: {e}")
             return False
 
+    @database_sync_to_async
+    def _ensure_quota(self):
+        return ensure_within_quota_or_raise(self.usage_subject)
+
+    @database_sync_to_async
+    def _quota_snapshot(self):
+        return get_quota_snapshot(self.usage_subject)
+
+    @database_sync_to_async
+    def _record_quota_usage(
+        self,
+        *,
+        source: str,
+        total_tokens: int,
+        prompt_tokens: int = 0,
+        completion_tokens: int = 0,
+        provider: str = '',
+        model: str = '',
+        metadata: Optional[dict] = None,
+    ):
+        from .models import Discussion
+        discussion = Discussion.objects.get(id=self.discussion_id)
+        return record_token_usage(
+            subject=self.usage_subject,
+            source=source,
+            total_tokens=total_tokens,
+            prompt_tokens=prompt_tokens,
+            completion_tokens=completion_tokens,
+            provider=provider,
+            model=model,
+            discussion=discussion,
+            metadata=metadata or {},
+        )
+
+    async def _send_quota_exceeded(self, snapshot: Optional[dict] = None):
+        if snapshot is None:
+            snapshot = await self._quota_snapshot()
+        await self.send(text_data=json.dumps({
+            'type': 'quota_exceeded',
+            'data': {
+                'message': '已超过可用 token 配额，请联系管理员获取更多额度',
+                'quota': snapshot,
+            }
+        }))
+
     async def _should_host_respond(self, player_message: str) -> bool:
         """判断主持人是否应该回应参与者的发言"""
         # Use sync_to_async to wrap the sync function call
@@ -784,7 +897,11 @@ class DiscussionConsumer(AsyncWebsocketConsumer):
 
     async def _get_host_response_to_player(self, player_message: str) -> dict:
         """获取主持人对参与者的回应"""
-        return await sync_to_async(self._get_host_response_to_player_sync)(player_message)
+        try:
+            return await sync_to_async(self._get_host_response_to_player_sync)(player_message)
+        except QuotaExceededError as e:
+            await self._send_quota_exceeded(e.snapshot)
+            return {'error_code': 'quota_exceeded'}
 
     def _get_host_response_to_player_sync(self, player_message: str) -> dict:
         """获取主持人对参与者的回应（同步版本）"""
@@ -793,6 +910,7 @@ class DiscussionConsumer(AsyncWebsocketConsumer):
 
         try:
             discussion = Discussion.objects.get(id=self.discussion_id)
+            ensure_within_quota_or_raise(self.usage_subject)
             history = self._get_conversation_history(discussion)
 
             host = HostAgent()
@@ -801,6 +919,16 @@ class DiscussionConsumer(AsyncWebsocketConsumer):
                 conversation_history=history,
                 topic=discussion.topic
             )
+            if host.last_token_usage:
+                usage = host.last_token_usage
+                record_token_usage(
+                    subject=self.usage_subject,
+                    source='roundtable.ws.host_response',
+                    total_tokens=usage.total_tokens,
+                    prompt_tokens=usage.prompt_tokens,
+                    completion_tokens=usage.completion_tokens,
+                    discussion=discussion,
+                )
 
             # 保存主持人消息
             msg = Message.objects.create(
@@ -820,12 +948,18 @@ class DiscussionConsumer(AsyncWebsocketConsumer):
             }
 
         except Exception as e:
+            if isinstance(e, QuotaExceededError):
+                raise
             logger.error(f"Error getting host response: {e}")
             return None
 
     async def _decide_next_speaker(self, context: str) -> str:
         """决定下一个发言的角色"""
-        return await sync_to_async(self._decide_next_speaker_sync)(context)
+        try:
+            return await sync_to_async(self._decide_next_speaker_sync)(context)
+        except QuotaExceededError as e:
+            await self._send_quota_exceeded(e.snapshot)
+            return None
 
     def _decide_next_speaker_sync(self, context: str) -> str:
         """决定下一个发言的角色（同步版本）"""
@@ -838,6 +972,7 @@ class DiscussionConsumer(AsyncWebsocketConsumer):
             last_speaker = discussion.current_speaker or ''
             history = self._get_conversation_history(discussion)
 
+            ensure_within_quota_or_raise(self.usage_subject)
             host = HostAgent()
             next_name, transition = host.decide_next_speaker(
                 characters=[{'name': c.name} for c in characters],
@@ -847,9 +982,21 @@ class DiscussionConsumer(AsyncWebsocketConsumer):
                 use_llm=True,
                 round_count=discussion.current_round
             )
+            if host.last_token_usage:
+                usage = host.last_token_usage
+                record_token_usage(
+                    subject=self.usage_subject,
+                    source='roundtable.ws.host_decide_next',
+                    total_tokens=usage.total_tokens,
+                    prompt_tokens=usage.prompt_tokens,
+                    completion_tokens=usage.completion_tokens,
+                    discussion=discussion,
+                )
             return next_name
 
         except Exception as e:
+            if isinstance(e, QuotaExceededError):
+                raise
             logger.error(f"Error deciding next speaker: {e}")
             return None
 
@@ -1036,6 +1183,9 @@ class DiscussionConsumer(AsyncWebsocketConsumer):
                 await self._send_debug_info(f"[错误] 获取 {next_char_name} 的发言失败")
 
         except Exception as e:
+            if isinstance(e, QuotaExceededError):
+                await self._send_quota_exceeded(e.snapshot)
+                return
             logger.exception(f"Error in auto-continue discussion: {e}")
             await self._send_debug_info(f"[错误] 自动继续异常: {e}")
 
@@ -1054,6 +1204,7 @@ class DiscussionConsumer(AsyncWebsocketConsumer):
             discussion = Discussion.objects.get(id=self.discussion_id)
             characters = list(discussion.characters.all())
 
+            ensure_within_quota_or_raise(self.usage_subject)
             host = HostAgent()
             # 初始化阶段使用轮询，LLM阶段每轮都用LLM
             use_llm = discussion.current_round > len(characters)
@@ -1069,10 +1220,22 @@ class DiscussionConsumer(AsyncWebsocketConsumer):
                 use_llm=use_llm,
                 round_count=discussion.current_round
             )
+            if host.last_token_usage:
+                usage = host.last_token_usage
+                record_token_usage(
+                    subject=self.usage_subject,
+                    source='roundtable.ws.host_decide_transition',
+                    total_tokens=usage.total_tokens,
+                    prompt_tokens=usage.prompt_tokens,
+                    completion_tokens=usage.completion_tokens,
+                    discussion=discussion,
+                )
 
             logger.info(f"[决策] 决策结果: next_name={next_name}, transition={transition}")
             return next_name, transition
         except Exception as e:
+            if isinstance(e, QuotaExceededError):
+                raise
             logger.error(f"Error deciding next speaker: {e}")
             return None, None
 
@@ -1084,6 +1247,7 @@ class DiscussionConsumer(AsyncWebsocketConsumer):
         try:
             discussion = Discussion.objects.get(id=self.discussion_id)
 
+            ensure_within_quota_or_raise(self.usage_subject)
             host = HostAgent()
             invitation = host.generate_invitation(
                 character_name=character_name,
@@ -1091,9 +1255,22 @@ class DiscussionConsumer(AsyncWebsocketConsumer):
                 conversation_history=history,
                 transition=transition
             )
+            if host.last_token_usage:
+                usage = host.last_token_usage
+                record_token_usage(
+                    subject=self.usage_subject,
+                    source='roundtable.ws.host_invitation',
+                    total_tokens=usage.total_tokens,
+                    prompt_tokens=usage.prompt_tokens,
+                    completion_tokens=usage.completion_tokens,
+                    discussion=discussion,
+                    metadata={'character': character_name},
+                )
 
             return invitation
         except Exception as e:
+            if isinstance(e, QuotaExceededError):
+                raise
             logger.error(f"Error generating invitation: {e}")
             return None
 
@@ -1171,6 +1348,23 @@ class DiscussionConsumer(AsyncWebsocketConsumer):
         }))
 
     @database_sync_to_async
+    def _can_access_discussion(self) -> bool:
+        """校验当前连接是否允许访问讨论（私密讨论仅 owner 可访问）。"""
+        from .models import Discussion
+
+        try:
+            discussion = Discussion.objects.get(id=self.discussion_id)
+        except Discussion.DoesNotExist:
+            return False
+
+        if discussion.visibility != Discussion.Visibility.PRIVATE:
+            return True
+
+        user = self.scope.get('user')
+        user_id = user.id if user is not None and getattr(user, 'is_authenticated', False) else None
+        return bool(discussion.owner_id and discussion.owner_id == user_id)
+
+    @database_sync_to_async
     def get_user_role(self) -> str:
         """获取当前用户的角色"""
         from .models import Discussion
@@ -1201,6 +1395,7 @@ class DiscussionConsumer(AsyncWebsocketConsumer):
             effective_role = discussion.user_role
             if discussion.owner_id and discussion.owner_id != user_id:
                 effective_role = 'observer'
+            quota = get_quota_snapshot(self.usage_subject)
 
             return {
                 'discussion_id': discussion.id,
@@ -1231,6 +1426,7 @@ class DiscussionConsumer(AsyncWebsocketConsumer):
                     }
                     for m in messages
                 ],
+                'quota': quota,
             }
         except Discussion.DoesNotExist:
             return {'error': 'Discussion not found'}
@@ -1242,6 +1438,7 @@ class DiscussionConsumer(AsyncWebsocketConsumer):
 
         try:
             discussion = Discussion.objects.get(id=self.discussion_id)
+            quota = get_quota_snapshot(self.usage_subject)
             return {
                 'status': discussion.status,
                 'current_round': discussion.current_round,
@@ -1249,6 +1446,7 @@ class DiscussionConsumer(AsyncWebsocketConsumer):
                 'current_speaker': discussion.current_speaker,
                 'host_token_holder': discussion.host_token_holder,
                 'player_token_holder': discussion.player_token_holder,
+                'quota': quota,
             }
         except Discussion.DoesNotExist:
             return {'error': 'Discussion not found'}

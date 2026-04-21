@@ -8,7 +8,7 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from django.db.models import Q
 from django.http import JsonResponse
 from django.views import View
-from django.shortcuts import render
+from django.shortcuts import render, resolve_url
 
 from .services.director import DirectorAgent
 from .services.character import CharacterAgent
@@ -16,8 +16,52 @@ from .services.host_agent import HostAgent as ModeratorAgent
 from .models import Discussion, Character, Message
 from backend.llm.providers import get_all_providers
 from backend.llm.exceptions import LLMError
+from .services.token_quota import (
+    QuotaExceededError,
+    ensure_within_quota_or_raise,
+    get_quota_snapshot,
+    parse_subject_key,
+    record_token_usage,
+    subject_from_request,
+    submit_quota_feedback,
+)
 
 logger = logging.getLogger(__name__)
+
+
+def _quota_error_response(snapshot: dict, status: int = 402) -> JsonResponse:
+    return JsonResponse({
+        'error': '已超过可用 token 配额，请联系管理员获取更多额度',
+        'error_code': 'quota_exceeded',
+        'quota': snapshot,
+    }, status=status, json_dumps_params={'ensure_ascii': False})
+
+
+def _fallback_characters_for_topic(topic: str, count: int = 20) -> list[dict]:
+    """LLM 不可用时的兜底嘉宾列表，保证流程可继续。"""
+    presets = [
+        {"name": "孔子", "era": "春秋", "reason": f"从伦理秩序视角分析“{topic}”"},
+        {"name": "韩非子", "era": "战国", "reason": f"从制度与约束机制讨论“{topic}”"},
+        {"name": "苏格拉底", "era": "古希腊", "reason": f"以追问法澄清“{topic}”的前提"},
+        {"name": "亚里士多德", "era": "古希腊", "reason": f"从逻辑与实践角度拆解“{topic}”"},
+        {"name": "孟子", "era": "战国", "reason": f"从人性与公共价值讨论“{topic}”"},
+        {"name": "商鞅", "era": "战国", "reason": f"从变法与执行视角审视“{topic}”"},
+        {"name": "王阳明", "era": "明代", "reason": f"从知行合一角度回应“{topic}”"},
+        {"name": "朱熹", "era": "南宋", "reason": f"从理学体系阐释“{topic}”"},
+        {"name": "培根", "era": "近代早期", "reason": f"强调经验主义与证据对“{topic}”的重要性"},
+        {"name": "笛卡尔", "era": "近代早期", "reason": f"以方法论怀疑检验“{topic}”"},
+        {"name": "牛顿", "era": "近代", "reason": f"从科学范式变迁看“{topic}”"},
+        {"name": "达尔文", "era": "近代", "reason": f"从演化视角讨论“{topic}”的动态变化"},
+        {"name": "爱因斯坦", "era": "现代", "reason": f"从科学与社会关系角度审视“{topic}”"},
+        {"name": "图灵", "era": "现代", "reason": f"从计算与智能边界讨论“{topic}”"},
+        {"name": "汉娜·阿伦特", "era": "现代", "reason": f"从公共性与责任伦理讨论“{topic}”"},
+        {"name": "哈耶克", "era": "现代", "reason": f"从秩序与信息分散视角分析“{topic}”"},
+        {"name": "凯恩斯", "era": "现代", "reason": f"从宏观治理与政策工具讨论“{topic}”"},
+        {"name": "钱学森", "era": "现代", "reason": f"从系统工程视角统筹“{topic}”"},
+        {"name": "费孝通", "era": "现代", "reason": f"从社会结构与基层实践观察“{topic}”"},
+        {"name": "吴敬琏", "era": "当代", "reason": f"从改革与制度经济学角度回应“{topic}”"},
+    ]
+    return presets[: max(1, min(count, len(presets)))]
 
 
 def parse_mentions(text: str) -> list:
@@ -109,6 +153,12 @@ class SuggestionsView(View):
     def post(self, request):
         """根据话题返回推荐角色列表"""
         try:
+            quota_subject = subject_from_request(request)
+            try:
+                ensure_within_quota_or_raise(quota_subject)
+            except QuotaExceededError as e:
+                return _quota_error_response(e.snapshot)
+
             data = json.loads(request.body)
             topic = data.get('topic', '').strip()
 
@@ -118,14 +168,27 @@ class SuggestionsView(View):
             if len(topic) > 200:
                 return JsonResponse({'error': '话题不能超过200字'}, status=400)
 
-            # 调用导演 Agent 获取推荐
+            # 调用导演 Agent 获取推荐；失败时降级为本地兜底推荐，避免 500 阻断流程
+            fallback_used = False
             director = DirectorAgent()
-            characters = director.suggest_characters(topic, count=20)
+            try:
+                characters = director.suggest_characters(topic, count=20)
+                if director.last_token_usage:
+                    record_token_usage(
+                        subject=quota_subject,
+                        source='roundtable.suggestions',
+                        total_tokens=director.last_token_usage.total_tokens,
+                        prompt_tokens=director.last_token_usage.prompt_tokens,
+                        completion_tokens=director.last_token_usage.completion_tokens,
+                    )
+            except Exception:
+                logger.exception("LLM suggestions failed, using fallback characters")
+                characters = _fallback_characters_for_topic(topic, count=20)
+                fallback_used = True
 
             if not characters:
-                return JsonResponse({
-                    'error': '暂时无法获取角色推荐，请稍后再试'
-                }, status=500)
+                characters = _fallback_characters_for_topic(topic, count=20)
+                fallback_used = True
 
             # 跟踪推荐角色：检查是否有离线基础设定
             # 如果没有，加入候选队列
@@ -151,7 +214,9 @@ class SuggestionsView(View):
             return JsonResponse({
                 'topic': topic,
                 'characters': characters,
-                'count': len(characters)
+                'count': len(characters),
+                'fallback': fallback_used,
+                'notice': '推荐服务暂不可用，已切换为默认嘉宾池' if fallback_used else '',
             }, json_dumps_params={'ensure_ascii': False})
 
         except json.JSONDecodeError:
@@ -167,6 +232,12 @@ class ConfigureView(View):
     def post(self, request):
         """为选定的角色生成详细配置"""
         try:
+            quota_subject = subject_from_request(request)
+            try:
+                ensure_within_quota_or_raise(quota_subject)
+            except QuotaExceededError as e:
+                return _quota_error_response(e.snapshot)
+
             data = json.loads(request.body)
             topic = data.get('topic', '').strip()
             characters = data.get('characters', [])
@@ -266,11 +337,23 @@ class DiscussionView(View):
         """渲染讨论页面"""
         try:
             discussion = Discussion.objects.get(id=discussion_id)
+            if (
+                discussion.visibility == Discussion.Visibility.PRIVATE
+                and (
+                    not request.user.is_authenticated
+                    or discussion.owner_id != request.user.id
+                )
+            ):
+                from django.http import HttpResponseNotFound
+                return HttpResponseNotFound("讨论不存在")
             characters = discussion.characters.all()
 
             user_role = discussion.user_role
             if discussion.owner_id and discussion.owner_id != request.user.id:
                 user_role = 'observer'
+
+            quota_subject = subject_from_request(request)
+            quota = get_quota_snapshot(quota_subject)
 
             context = {
                 'discussion_id': discussion.id,
@@ -302,6 +385,7 @@ class DiscussionView(View):
                     }
                     for m in discussion.messages.select_related('character').all()
                 ],
+                'quota_json': json.dumps(quota, ensure_ascii=False),
             }
             return render(request, 'roundtable/discussion.html', context)
 
@@ -321,6 +405,12 @@ class DiscussionStartView(View):
             return JsonResponse({'error': 'Content-Type must be application/json'}, status=400)
 
         try:
+            quota_subject = subject_from_request(request)
+            try:
+                ensure_within_quota_or_raise(quota_subject)
+            except QuotaExceededError as e:
+                return _quota_error_response(e.snapshot)
+
             data = json.loads(request.body)
             topic = data.get('topic', '').strip()
             characters_data = data.get('characters', [])
@@ -330,6 +420,11 @@ class DiscussionStartView(View):
             visibility = data.get('visibility', 'public')
             if visibility not in ('public', 'private'):
                 return JsonResponse({'error': '无效的可见性参数'}, status=400)
+            if visibility == 'private' and not request.user.is_authenticated:
+                return JsonResponse({
+                    'error': '仅登录用户可创建仅自己可见的讨论',
+                    'login_url': resolve_url('login'),
+                }, status=401)
 
             if not topic:
                 return JsonResponse({'error': '话题不能为空'}, status=400)
@@ -346,6 +441,7 @@ class DiscussionStartView(View):
                 max_rounds=max_rounds,
                 owner=owner,
                 visibility=visibility,
+                usage_subject=quota_subject.key,
             )
 
             # 创建角色
@@ -381,12 +477,24 @@ class DiscussionStartView(View):
             ]
 
             try:
+                ensure_within_quota_or_raise(quota_subject)
                 opening = moderator.generate_opening(
                     topic=topic,
                     characters=characters_for_opening,
                     user_role=user_role,
                 )
+                if moderator.last_token_usage:
+                    record_token_usage(
+                        subject=quota_subject,
+                        source='roundtable.start.opening',
+                        total_tokens=moderator.last_token_usage.total_tokens,
+                        prompt_tokens=moderator.last_token_usage.prompt_tokens,
+                        completion_tokens=moderator.last_token_usage.completion_tokens,
+                        discussion=discussion,
+                    )
                 logger.info(f"[Discussion {discussion.id}] Opening generated successfully")
+            except QuotaExceededError as e:
+                return _quota_error_response(e.snapshot)
             except Exception as e:
                 logger.error(f"[Discussion {discussion.id}] Failed to generate opening: {e}")
                 # 如果开场白生成失败，使用默认开场白
@@ -413,6 +521,7 @@ class DiscussionStartView(View):
             def generate_character_response(char_obj, current_history):
                 """为单个角色生成响应"""
                 try:
+                    ensure_within_quota_or_raise(quota_subject)
                     character_agent = CharacterAgent()
                     speech = character_agent.generate_speech(
                         character_config={
@@ -428,7 +537,28 @@ class DiscussionStartView(View):
                         conversation_history=current_history,
                         character_limit=200,
                     )
+                    if character_agent.last_token_usage:
+                        usage = character_agent.last_token_usage
+                        record_token_usage(
+                            subject=quota_subject,
+                            source='roundtable.start.initial_speech',
+                            total_tokens=usage.total_tokens,
+                            prompt_tokens=usage.prompt_tokens,
+                            completion_tokens=usage.completion_tokens,
+                            provider=char_obj.llm_provider or '',
+                            model=char_obj.llm_model or '',
+                            discussion=discussion,
+                            metadata={'character': char_obj.name},
+                        )
                     return {'char_obj': char_obj, 'speech': speech, 'success': True}
+                except QuotaExceededError as e:
+                    return {
+                        'char_obj': char_obj,
+                        'speech': None,
+                        'success': False,
+                        'quota_exceeded': True,
+                        'snapshot': e.snapshot,
+                    }
                 except Exception as e:
                     logger.error(f"[Discussion {discussion.id}] Failed to generate speech for {char_obj.name}: {e}")
                     return {'char_obj': char_obj, 'speech': None, 'success': False, 'error': str(e)}
@@ -441,6 +571,8 @@ class DiscussionStartView(View):
                     futures = {executor.submit(generate_character_response, char, history): char for char in mentioned_chars}
                     for future in as_completed(futures, timeout=60):
                         result = future.result()
+                        if result.get('quota_exceeded'):
+                            return _quota_error_response(result.get('snapshot', {}))
                         if result['success'] and result['speech']:
                             char_obj = result['char_obj']
                             speech = result['speech']
@@ -486,6 +618,7 @@ class DiscussionStartView(View):
                 'opening': opening,
                 'initial_responses': initial_responses,
                 'status': 'active',
+                'quota': get_quota_snapshot(quota_subject),
             }, json_dumps_params={'ensure_ascii': False})
 
         except json.JSONDecodeError:
@@ -502,6 +635,14 @@ class DiscussionMessageView(View):
         """发送用户消息并获取AI回复"""
         try:
             discussion = Discussion.objects.get(id=discussion_id)
+            quota_subject = (
+                parse_subject_key(discussion.usage_subject)
+                if discussion.usage_subject else subject_from_request(request)
+            )
+            try:
+                ensure_within_quota_or_raise(quota_subject)
+            except QuotaExceededError as e:
+                return _quota_error_response(e.snapshot)
 
             data = json.loads(request.body)
             content = data.get('content', '').strip()
@@ -536,6 +677,7 @@ class DiscussionMessageView(View):
                 try:
                     char_obj = Character.objects.get(id=character_id)
                     character_agent = CharacterAgent()
+                    ensure_within_quota_or_raise(quota_subject)
                     speech = character_agent.generate_speech(
                         character_config={
                             'name': char_obj.name,
@@ -561,6 +703,19 @@ class DiscussionMessageView(View):
 
                     char_obj.message_count += 1
                     char_obj.save()
+                    if character_agent.last_token_usage:
+                        usage = character_agent.last_token_usage
+                        record_token_usage(
+                            subject=quota_subject,
+                            source='roundtable.message.character_reply',
+                            total_tokens=usage.total_tokens,
+                            prompt_tokens=usage.prompt_tokens,
+                            completion_tokens=usage.completion_tokens,
+                            provider=char_obj.llm_provider or '',
+                            model=char_obj.llm_model or '',
+                            discussion=discussion,
+                            metadata={'character': char_obj.name},
+                        )
 
                     responses.append({
                         'id': char_msg.id,
@@ -582,11 +737,23 @@ class DiscussionMessageView(View):
                 next_char = self._get_next_speaker(characters, last_speaker)
 
                 if next_char:
+                    ensure_within_quota_or_raise(quota_subject)
                     invitation = moderator.generate_invitation(
                         character_name=next_char.name,
                         topic=discussion.topic,
                         conversation_history=history,
                     )
+                    if moderator.last_token_usage:
+                        usage = moderator.last_token_usage
+                        record_token_usage(
+                            subject=quota_subject,
+                            source='roundtable.message.host_invitation',
+                            total_tokens=usage.total_tokens,
+                            prompt_tokens=usage.prompt_tokens,
+                            completion_tokens=usage.completion_tokens,
+                            discussion=discussion,
+                            metadata={'character': next_char.name},
+                        )
 
                     mod_msg = Message.objects.create(
                         discussion=discussion,
@@ -610,6 +777,7 @@ class DiscussionMessageView(View):
             # 检查是否达到最大轮次
             if discussion.current_round >= discussion.max_rounds:
                 discussion.status = 'finished'
+                ensure_within_quota_or_raise(quota_subject)
                 closing = moderator.generate_closing(
                     topic=discussion.topic,
                     characters=[
@@ -618,6 +786,16 @@ class DiscussionMessageView(View):
                     ],
                     discussion_summary="（详见总结）"
                 )
+                if moderator.last_token_usage:
+                    usage = moderator.last_token_usage
+                    record_token_usage(
+                        subject=quota_subject,
+                        source='roundtable.message.host_closing',
+                        total_tokens=usage.total_tokens,
+                        prompt_tokens=usage.prompt_tokens,
+                        completion_tokens=usage.completion_tokens,
+                        discussion=discussion,
+                    )
                 Message.objects.create(
                     discussion=discussion,
                     content=closing,
@@ -637,12 +815,15 @@ class DiscussionMessageView(View):
                 'round': discussion.current_round,
                 'max_round': discussion.max_rounds,
                 'status': discussion.status,
+                'quota': get_quota_snapshot(quota_subject),
             }, json_dumps_params={'ensure_ascii': False})
 
         except Discussion.DoesNotExist:
             return JsonResponse({'error': '讨论不存在'}, status=404)
         except json.JSONDecodeError:
             return JsonResponse({'error': '无效的请求格式'}, status=400)
+        except QuotaExceededError as e:
+            return _quota_error_response(e.snapshot)
         except Exception as e:
             logger.exception("Error in discussion message")
             return JsonResponse({'error': '服务器内部错误，请稍后重试'}, status=500)
@@ -1082,6 +1263,12 @@ class RestartApiView(View):
 
     def post(self, request, discussion_id):
         """复制原讨论配置，创建新讨论"""
+        quota_subject = subject_from_request(request)
+        try:
+            ensure_within_quota_or_raise(quota_subject)
+        except QuotaExceededError as e:
+            return _quota_error_response(e.snapshot)
+
         try:
             data = json.loads(request.body.decode('utf-8') or '{}')
         except json.JSONDecodeError:
@@ -1089,6 +1276,11 @@ class RestartApiView(View):
         visibility = data.get('visibility', 'public')
         if visibility not in ('public', 'private'):
             return JsonResponse({'error': '无效的可见性参数'}, status=400)
+        if visibility == 'private' and not request.user.is_authenticated:
+            return JsonResponse({
+                'error': '仅登录用户可创建仅自己可见的讨论',
+                'login_url': resolve_url('login'),
+            }, status=401)
 
         try:
             original = Discussion.objects.get(id=discussion_id)
@@ -1107,6 +1299,7 @@ class RestartApiView(View):
                 character_limit=original.character_limit,
                 owner=owner,
                 visibility=visibility,
+                usage_subject=quota_subject.key,
             )
 
             # 复制角色配置（直接复制字段，不调用 LLM）
@@ -1130,6 +1323,7 @@ class RestartApiView(View):
             # 生成开场白
             from .services.host_agent import HostAgent
             host = HostAgent()
+            ensure_within_quota_or_raise(quota_subject)
             new_chars = new_discussion.characters.all()
             characters_for_opening = [
                 {'name': c.name, 'era': c.era, 'bio': c.bio}
@@ -1140,6 +1334,16 @@ class RestartApiView(View):
                 characters=characters_for_opening,
                 user_role=new_discussion.user_role,
             )
+            if host.last_token_usage:
+                usage = host.last_token_usage
+                record_token_usage(
+                    subject=quota_subject,
+                    source='roundtable.restart.opening',
+                    total_tokens=usage.total_tokens,
+                    prompt_tokens=usage.prompt_tokens,
+                    completion_tokens=usage.completion_tokens,
+                    discussion=new_discussion,
+                )
 
             # 保存开场消息
             Message.objects.create(
@@ -1158,6 +1362,7 @@ class RestartApiView(View):
                 if char_obj:
                     from .services.character import CharacterAgent
                     character_agent = CharacterAgent()
+                    ensure_within_quota_or_raise(quota_subject)
                     speech = character_agent.generate_speech(
                         character_config={
                             'name': char_obj.name,
@@ -1179,6 +1384,19 @@ class RestartApiView(View):
                         word_count=len(speech),
                         is_moderator=False,
                     )
+                    if character_agent.last_token_usage:
+                        usage = character_agent.last_token_usage
+                        record_token_usage(
+                            subject=quota_subject,
+                            source='roundtable.restart.initial_speech',
+                            total_tokens=usage.total_tokens,
+                            prompt_tokens=usage.prompt_tokens,
+                            completion_tokens=usage.completion_tokens,
+                            provider=char_obj.llm_provider or '',
+                            model=char_obj.llm_model or '',
+                            discussion=new_discussion,
+                            metadata={'character': char_obj.name},
+                        )
                     char_obj.message_count += 1
                     char_obj.save()
                     history += f"\n{char_obj.name}：{speech}"
@@ -1196,13 +1414,47 @@ class RestartApiView(View):
                 'new_discussion_id': new_discussion.id,
                 'topic': new_discussion.topic,
                 'character_count': len(new_chars),
+                'quota': get_quota_snapshot(quota_subject),
             }, json_dumps_params={'ensure_ascii': False})
 
         except Discussion.DoesNotExist:
             return JsonResponse({'error': '原讨论不存在'}, status=404)
+        except QuotaExceededError as e:
+            return _quota_error_response(e.snapshot)
         except Exception as e:
             logger.exception("Error restarting discussion")
             return JsonResponse({'error': '服务器内部错误，请稍后重试'}, status=500)
+
+
+class QuotaStatusApiView(View):
+    """API - 获取当前用户的 token 使用状态"""
+
+    def get(self, request):
+        subject = subject_from_request(request)
+        return JsonResponse({
+            'quota': get_quota_snapshot(subject),
+        }, json_dumps_params={'ensure_ascii': False})
+
+
+class QuotaFeedbackApiView(View):
+    """API - 提交 token 配额反馈给管理员"""
+
+    def post(self, request):
+        subject = subject_from_request(request)
+        try:
+            data = json.loads(request.body.decode('utf-8') or '{}')
+        except json.JSONDecodeError:
+            data = {}
+        feedback = submit_quota_feedback(
+            subject=subject,
+            contact=data.get('contact', ''),
+            message=data.get('message', ''),
+        )
+        return JsonResponse({
+            'success': True,
+            'feedback_id': feedback.id,
+            'quota': get_quota_snapshot(subject),
+        }, json_dumps_params={'ensure_ascii': False})
 
 
 class ValidateGuestsView(View):
@@ -1213,6 +1465,12 @@ class ValidateGuestsView(View):
     FIXED_REJECTION = "评委会未能通过你推荐的人物"
 
     def post(self, request):
+        quota_subject = subject_from_request(request)
+        try:
+            ensure_within_quota_or_raise(quota_subject)
+        except QuotaExceededError as e:
+            return _quota_error_response(e.snapshot)
+
         content_type = request.headers.get('Content-Type', '')
         if 'application/json' not in content_type:
             return JsonResponse(
@@ -1262,6 +1520,14 @@ class ValidateGuestsView(View):
         try:
             director = DirectorAgent()
             results = director.validate_manual_characters(topic, cleaned)
+            if director.last_token_usage:
+                record_token_usage(
+                    subject=quota_subject,
+                    source='roundtable.validate_guests',
+                    total_tokens=director.last_token_usage.total_tokens,
+                    prompt_tokens=director.last_token_usage.prompt_tokens,
+                    completion_tokens=director.last_token_usage.completion_tokens,
+                )
         except LLMError:
             logger.exception("Validator LLM call failed")
             return JsonResponse(

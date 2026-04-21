@@ -55,7 +55,21 @@ Copy `.env.example` to `.env` and fill in API keys. Required for LLM calls:
 - `QWEN_API_KEY`, `DEEPSEEK_API_KEY`, `ANTHROPIC_API_KEY` (used for MiniMax), `DOUBAO_API_KEY`
 - `LLM_DEFAULT_PROVIDER` defaults to `qwen`
 
+For production (`DEBUG=0`), `DJANGO_SECRET_KEY` and `ALLOWED_HOSTS` are also required — see `.env.example`.
+
 Redis is optional — the app auto-detects it and falls back to `InMemoryChannelLayer` (single-process only).
+
+### Authentication
+
+Anonymous access is enabled by default. Authentication is required only for specific actions (for example, creating private discussions). Login and signup pages are available at `/accounts/login/` and `/accounts/signup/`.
+
+If you need an admin account after `migrate`, create one with:
+
+```bash
+cd backend && python manage.py createsuperuser
+```
+
+For guarded API actions, unauthenticated requests return `401 JSON` with a `login_url` hint.
 
 ## Architecture
 

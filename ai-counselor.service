@@ -2,15 +2,22 @@
 Description=AI Counselor Daphne ASGI Server
 After=network.target postgresql.service redis.service
 
+# This unit is a template. Before installing, replace:
+#   APP_USER       — the Linux user that will own the process (e.g. "jack", "www-data")
+#   APP_DIR        — absolute path to the project checkout
+#   APP_VENV       — absolute path to the virtualenv (commonly $APP_DIR/venv)
+#   APP_BIND_PORT  — TCP port to listen on (default 8003)
+# Or override these via /etc/systemd/system/ai-counselor.service.d/override.conf.
+
 [Service]
 Type=simple
-User=jack
-WorkingDirectory=/home/jack/workspace/ai_counselor
-Environment=PYTHONPATH=/home/jack/workspace/ai_counselor
-EnvironmentFile=/home/jack/workspace/ai_counselor/.env
-ExecStart=/home/jack/workspace/ai_counselor/venv/bin/daphne \
+User=APP_USER
+WorkingDirectory=APP_DIR
+Environment=PYTHONPATH=APP_DIR
+EnvironmentFile=APP_DIR/.env
+ExecStart=APP_VENV/bin/daphne \
     -b 127.0.0.1 \
-    -p 8003 \
+    -p APP_BIND_PORT \
     backend.config.asgi:application
 Restart=always
 RestartSec=5

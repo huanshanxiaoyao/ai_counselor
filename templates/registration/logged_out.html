@@ -1,0 +1,10 @@
+{% extends 'common/base.html' %}
+
+{% block title %}已退出 - AI Tools{% endblock %}
+
+{% block content %}
+<section style="max-width: 420px; margin: 60px auto; padding: 32px; text-align: center;">
+    <h2>已退出登录</h2>
+    <p style="margin-top: 16px;"><a href="{% url 'login' %}" style="color: #4ecdc4;">重新登录</a></p>
+</section>
+{% endblock %}
