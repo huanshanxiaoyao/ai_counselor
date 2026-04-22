@@ -14,7 +14,8 @@
             <a href="{% url 'home' %}" class="logo">AI Tools</a>
             <nav class="nav">
                 <a href="{% url 'home' %}" class="nav-link">首页</a>
-                <a href="{% url 'counselor' %}" class="nav-link">AI 心理顾问</a>
+                <a href="{% url 'moodpal:index' %}" class="nav-link">MoodPal</a>
+                <a href="{% url 'llm_test' %}" class="nav-link">LLM 对比测试</a>
                 <a href="{% url 'roundtable:index' %}" class="nav-link">圆桌会谈</a>
                 <button type="button" class="nav-quota" id="global-quota-pill" title="查看 token 用量">Token --</button>
                 <span class="nav-auth">
@@ -204,6 +205,8 @@
             });
 
             window.updateGlobalTokenQuota = applyQuota;
+            window.openGlobalTokenQuotaModal = openModal;
+            window.closeGlobalTokenQuotaModal = closeModal;
             fetchQuota();
             setInterval(() => {
                 if (!document.hidden) fetchQuota();

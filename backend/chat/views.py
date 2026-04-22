@@ -8,7 +8,7 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 
 from django.http import JsonResponse
 from django.views import View
-from django.shortcuts import render
+from django.shortcuts import redirect, render
 
 from backend.llm import LLMClient, LLMConfigurationError, get_all_providers
 from backend.roundtable.services.token_quota import (
@@ -82,6 +82,14 @@ class ChatView(View):
             'providers': _json.dumps(providers_dict),
         }
         return render(request, 'chat/index.html', context)
+
+
+class CounselorLandingView(View):
+    """Landing page for the upcoming counselor agent."""
+
+    def get(self, request):
+        """Redirect legacy counselor entry to MoodPal."""
+        return redirect('moodpal:index')
 
 
 class ChatAPIView(View):

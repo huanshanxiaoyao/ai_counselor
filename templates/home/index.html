@@ -10,11 +10,18 @@
 </section>
 
 <section class="tools-grid">
-    <a href="{% url 'counselor' %}" class="tool-card">
+    <a href="{% url 'llm_test' %}" class="tool-card">
         <div class="tool-icon">🧠</div>
-        <h3>AI 心理顾问</h3>
+        <h3>LLM 对比测试</h3>
         <p>集成多个 AI 模型的心理咨询对话工具，同时获得通义千问、DeepSeek、MiniMax 的专业建议</p>
         <span class="badge">多模型对比</span>
+    </a>
+
+    <a href="{% url 'moodpal:index' %}" class="tool-card">
+        <div class="tool-icon">🌿</div>
+        <h3>MoodPal</h3>
+        <p>面向真实情绪支持场景的陪伴式产品入口，当前阶段已接通角色选择、会话生命周期与摘要页骨架。</p>
+        <span class="badge" style="background: rgba(255, 200, 87, 0.22); border-color: rgba(255, 200, 87, 0.4); color: #ffd56b;">MVP 进行中</span>
     </a>
 
     <a href="{% url 'roundtable:index' %}" class="tool-card">

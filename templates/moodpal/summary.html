@@ -1,0 +1,104 @@
+{% extends 'common/base.html' %}
+
+{% block title %}MoodPal 摘要{% endblock %}
+
+{% block extra_css %}
+<style>
+    .summary-shell { max-width: 920px; margin: 0 auto; display: grid; gap: 18px; }
+    .summary-card {
+        padding: 24px;
+        border-radius: 22px;
+        border: 1px solid rgba(255,255,255,0.08);
+        background: rgba(255,255,255,0.04);
+    }
+    .summary-card h2, .summary-card h3 { margin-top: 0; }
+    .summary-meta { color: #cbd6db; line-height: 1.8; }
+    .summary-warning {
+        padding: 14px 16px;
+        border-radius: 16px;
+        background: rgba(255, 111, 97, 0.08);
+        border: 1px solid rgba(255, 111, 97, 0.28);
+        color: #ffd3cb;
+        line-height: 1.7;
+    }
+    .summary-card textarea {
+        width: 100%;
+        min-height: 260px;
+        border-radius: 16px;
+        border: 1px solid rgba(255,255,255,0.12);
+        background: rgba(0,0,0,0.22);
+        color: white;
+        padding: 14px;
+        resize: vertical;
+        box-sizing: border-box;
+    }
+    .summary-body {
+        padding: 18px;
+        border-radius: 16px;
+        background: rgba(0,0,0,0.18);
+        color: #eef4f7;
+        line-height: 1.8;
+        white-space: pre-wrap;
+    }
+    .summary-actions {
+        display: flex;
+        gap: 12px;
+        flex-wrap: wrap;
+        margin-top: 16px;
+    }
+    .summary-actions button {
+        appearance: none;
+        border: none;
+        border-radius: 14px;
+        padding: 12px 16px;
+        cursor: pointer;
+        font-weight: 700;
+    }
+    .summary-actions .save { background: #4ecdc4; color: #0f1719; }
+    .summary-actions .destroy { background: #ff6f61; color: white; }
+</style>
+{% endblock %}
+
+{% block content %}
+<section class="summary-shell">
+    <div class="summary-card">
+        <h2>{{ session.get_persona_id_display }} · 摘要页</h2>
+        <div class="summary-meta">
+            当前状态：{{ session.get_status_display }}<br>
+            结束原因：{{ session.get_close_reason_display|default:"未结束" }}<br>
+            会话 ID：{{ session.id }}<br>
+            原始消息：{% if raw_message_count %}当前仍保留 {{ raw_message_count }} 条，等待你的最终决定{% else %}已清理完成{% endif %}
+        </div>
+    </div>
+
+    {% if session.status == status_summary_pending %}
+    <div class="summary-card">
+        <div class="summary-warning">你现在看到的是系统基于本次短期消息生成的摘要草稿。点击“保存并关闭”后，只会保留你确认后的摘要；点击“销毁并关闭”后，摘要和原始消息都会一起删除。</div>
+    </div>
+    <div class="summary-card">
+        <h3>摘要草稿</h3>
+        <form method="post">
+            {% csrf_token %}
+            <textarea name="summary_text">{{ summary_text }}</textarea>
+            <div class="summary-actions">
+                <button type="submit" name="action" value="save" class="save">保存并关闭</button>
+                <button type="submit" name="action" value="destroy" class="destroy">销毁并关闭</button>
+            </div>
+        </form>
+    </div>
+    {% elif session.status == status_closed and session.summary_action == summary_saved %}
+    <div class="summary-card">
+        <div class="summary-warning">本次会话已关闭。原始消息已经清理完成，当前仅保留你确认后的摘要。</div>
+    </div>
+    <div class="summary-card">
+        <h3>已保存摘要</h3>
+        <div class="summary-body">{{ summary_text }}</div>
+    </div>
+    {% elif session.status == status_closed and session.summary_action == summary_destroyed %}
+    <div class="summary-card">
+        <h3>会话已关闭</h3>
+        <p>你已选择销毁本次摘要。当前会话已经关闭，原始消息和摘要都不可恢复。</p>
+    </div>
+    {% endif %}
+</section>
+{% endblock %}

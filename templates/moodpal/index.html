@@ -1,0 +1,376 @@
+{% extends 'common/base.html' %}
+
+{% block title %}MoodPal{% endblock %}
+
+{% block extra_css %}
+<style>
+    .moodpal-shell { max-width: 1120px; margin: 0 auto; }
+    .moodpal-hero {
+        display: grid;
+        gap: 18px;
+        padding: 24px 0 12px;
+    }
+    .moodpal-kicker {
+        display: inline-flex;
+        width: fit-content;
+        padding: 6px 10px;
+        border-radius: 999px;
+        background: rgba(78, 205, 196, 0.12);
+        color: #4ecdc4;
+        font-size: 12px;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+    }
+    .moodpal-hero h2 { margin: 0; font-size: 42px; line-height: 1.05; }
+    .moodpal-hero p { margin: 0; max-width: 760px; color: #d7dde2; }
+    .moodpal-note {
+        padding: 14px 16px;
+        border: 1px solid rgba(255,255,255,0.08);
+        border-radius: 16px;
+        background: rgba(255,255,255,0.04);
+        color: #f3c677;
+        font-size: 14px;
+    }
+    .moodpal-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+        gap: 18px;
+        margin-top: 26px;
+    }
+    .persona-card {
+        padding: 22px;
+        border-radius: 22px;
+        background: linear-gradient(180deg, rgba(255,255,255,0.09), rgba(255,255,255,0.04));
+        border: 1px solid rgba(255,255,255,0.08);
+        box-shadow: 0 18px 48px rgba(0,0,0,0.2);
+        display: grid;
+        gap: 14px;
+    }
+    .persona-card h3 { margin: 0; font-size: 24px; }
+    .persona-card .subtitle { color: #8de1db; font-size: 13px; }
+    .persona-card p { margin: 0; color: #d7dde2; min-height: 72px; }
+    .persona-problems { display: flex; flex-wrap: wrap; gap: 8px; }
+    .persona-problems span {
+        padding: 6px 10px;
+        border-radius: 999px;
+        background: rgba(255,255,255,0.06);
+        border: 1px solid rgba(255,255,255,0.08);
+        font-size: 12px;
+        color: #f4f6f8;
+    }
+    .persona-card button {
+        appearance: none;
+        border: none;
+        border-radius: 14px;
+        padding: 12px 14px;
+        background: #4ecdc4;
+        color: #0f1719;
+        font-weight: 700;
+        cursor: pointer;
+    }
+    .persona-model {
+        display: grid;
+        gap: 6px;
+    }
+    .persona-model label {
+        font-size: 12px;
+        color: #c9d4da;
+    }
+    .persona-model select {
+        width: 100%;
+        border-radius: 12px;
+        border: 1px solid rgba(255,255,255,0.12);
+        background: rgba(0,0,0,0.18);
+        color: white;
+        padding: 10px 12px;
+    }
+    .form-error {
+        color: #ffb4a2;
+        background: rgba(255, 111, 97, 0.08);
+        border: 1px solid rgba(255, 111, 97, 0.28);
+        border-radius: 14px;
+        padding: 12px 14px;
+        margin-top: 18px;
+    }
+    .privacy-modal {
+        position: fixed;
+        inset: 0;
+        background: rgba(4, 10, 12, 0.76);
+        display: none;
+        align-items: center;
+        justify-content: center;
+        padding: 24px;
+        z-index: 50;
+    }
+    .privacy-modal.active {
+        display: flex;
+    }
+    .privacy-card {
+        width: min(640px, 100%);
+        border-radius: 24px;
+        background: linear-gradient(180deg, rgba(17, 29, 34, 0.98), rgba(9, 17, 20, 0.98));
+        border: 1px solid rgba(255,255,255,0.1);
+        box-shadow: 0 24px 80px rgba(0,0,0,0.45);
+        padding: 24px;
+        display: grid;
+        gap: 18px;
+    }
+    .privacy-card h3,
+    .privacy-card h4 {
+        margin: 0;
+    }
+    .privacy-card p,
+    .privacy-card li {
+        color: #dbe4e8;
+        line-height: 1.7;
+    }
+    .privacy-card ul {
+        margin: 0;
+        padding-left: 20px;
+        display: grid;
+        gap: 8px;
+    }
+    .privacy-summary {
+        display: grid;
+        gap: 6px;
+        padding: 14px 16px;
+        border-radius: 16px;
+        background: rgba(78, 205, 196, 0.08);
+        border: 1px solid rgba(78, 205, 196, 0.2);
+    }
+    .privacy-summary strong {
+        font-size: 18px;
+    }
+    .privacy-checkbox {
+        display: flex;
+        gap: 10px;
+        align-items: flex-start;
+        color: #eef4f7;
+    }
+    .privacy-checkbox input {
+        margin-top: 4px;
+    }
+    .privacy-actions {
+        display: flex;
+        justify-content: flex-end;
+        gap: 12px;
+        flex-wrap: wrap;
+    }
+    .privacy-actions button {
+        appearance: none;
+        border: none;
+        border-radius: 14px;
+        padding: 12px 16px;
+        font-weight: 700;
+        cursor: pointer;
+    }
+    .privacy-actions .ghost {
+        background: rgba(255,255,255,0.08);
+        color: white;
+    }
+    .privacy-actions .primary {
+        background: #4ecdc4;
+        color: #0f1719;
+    }
+    .privacy-actions .primary[disabled] {
+        opacity: 0.55;
+        cursor: default;
+    }
+    .privacy-error {
+        min-height: 20px;
+        color: #ffb4a2;
+        font-size: 14px;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<section class="moodpal-shell">
+    <div class="moodpal-hero">
+        <span class="moodpal-kicker">MoodPal</span>
+        <h2>选择一个陪伴你的角色，开始一段可持续的情绪支持会话。</h2>
+        <p>当前版本已经支持角色入口、短期消息容器、摘要草稿确认和“阅后即焚”最小闭环。其中“逻辑派的邻家哥哥”已接入 CBT 状态机首版，其余角色暂时仍使用占位版陪伴回复。</p>
+        <div class="moodpal-note">非医疗建议：MoodPal 提供的是情绪支持与方法性陪伴，不替代医疗诊断、紧急援助或线下专业治疗。</div>
+    </div>
+
+    <div class="form-error" id="moodpal-form-error" {% if not form_error %}hidden{% endif %}>{{ form_error }}</div>
+
+    <div class="moodpal-grid">
+        {% for persona in personas %}
+        <form method="post" class="persona-card">
+            {% csrf_token %}
+            <input type="hidden" name="persona_id" value="{{ persona.id }}">
+            <input type="hidden" name="privacy_acknowledged" value="0">
+            <div>
+                <h3>{{ persona.title }}</h3>
+                <div class="subtitle">{{ persona.subtitle }}</div>
+            </div>
+            <p>{{ persona.description }}</p>
+            <div class="persona-problems">
+                {% for problem in persona.problems %}
+                <span>{{ problem }}</span>
+                {% endfor %}
+            </div>
+            <div class="persona-model">
+                <label for="model-{{ persona.id }}">模型</label>
+                <select id="model-{{ persona.id }}" name="selected_model">
+                    {% for option in llm_options %}
+                    <option value="{{ option.value }}" {% if option.value == selected_model_value %}selected{% endif %}>{{ option.label }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <button type="submit">开始新会话</button>
+        </form>
+        {% endfor %}
+    </div>
+</section>
+
+<div class="privacy-modal" id="privacy-handshake-modal">
+    <div class="privacy-card">
+        <div class="privacy-summary">
+            <strong id="privacy-persona-title">开始新会话</strong>
+            <div id="privacy-model-label">模型：</div>
+        </div>
+        <div>
+            <h3>隐私契约与边界说明</h3>
+            <p>进入正式对话前，请先确认以下约定。本次确认仅对当前新会话生效。</p>
+        </div>
+        <div>
+            <h4>你需要知道</h4>
+            <ul>
+                <li>原始聊天消息不会长期保存，只会在当前会话中短期存在。</li>
+                <li>会话结束后，系统会先生成一份可全文编辑的摘要草稿。</li>
+                <li>只有你确认保留后的摘要会继续保存；如果你选择销毁，摘要和原始消息都会清空。</li>
+                <li>MoodPal 提供的是情绪支持与方法性陪伴，不构成医疗建议或紧急援助。</li>
+            </ul>
+        </div>
+        <label class="privacy-checkbox">
+            <input type="checkbox" id="privacy-ack-checkbox">
+            <span>我已理解本次会话的隐私处理方式与产品边界，并同意进入对话。</span>
+        </label>
+        <div class="privacy-error" id="privacy-error"></div>
+        <div class="privacy-actions">
+            <button type="button" class="ghost" id="privacy-cancel-btn">暂不开始</button>
+            <button type="button" class="primary" id="privacy-confirm-btn" disabled>确认并进入会话</button>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    (function initMoodPalStartFlow() {
+        const modal = document.getElementById('privacy-handshake-modal');
+        const errorBox = document.getElementById('moodpal-form-error');
+        const privacyError = document.getElementById('privacy-error');
+        const checkbox = document.getElementById('privacy-ack-checkbox');
+        const confirmBtn = document.getElementById('privacy-confirm-btn');
+        const cancelBtn = document.getElementById('privacy-cancel-btn');
+        const personaTitle = document.getElementById('privacy-persona-title');
+        const modelLabel = document.getElementById('privacy-model-label');
+        const forms = Array.from(document.querySelectorAll('.persona-card'));
+        let pendingPayload = null;
+
+        function setFormError(message) {
+            if (!message) {
+                errorBox.hidden = true;
+                errorBox.textContent = '';
+                return;
+            }
+            errorBox.hidden = false;
+            errorBox.textContent = message;
+        }
+
+        function closeModal() {
+            modal.classList.remove('active');
+            pendingPayload = null;
+            privacyError.textContent = '';
+            checkbox.checked = false;
+            confirmBtn.disabled = true;
+        }
+
+        function openModal(payload) {
+            pendingPayload = payload;
+            personaTitle.textContent = `开始与 ${payload.personaTitle} 对话`;
+            modelLabel.textContent = `模型：${payload.modelLabel}`;
+            modal.classList.add('active');
+        }
+
+        async function createSession() {
+            if (!pendingPayload) return;
+            if (!checkbox.checked) {
+                privacyError.textContent = '请先确认隐私契约与边界说明。';
+                return;
+            }
+            privacyError.textContent = '';
+            confirmBtn.disabled = true;
+            try {
+                const response = await csrfFetch('/api/moodpal/session/start', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({
+                        persona_id: pendingPayload.personaId,
+                        selected_model: pendingPayload.selectedModel,
+                        privacy_acknowledged: true,
+                    }),
+                });
+                const data = await response.json();
+                if (data.quota && typeof window.updateGlobalTokenQuota === 'function') {
+                    window.updateGlobalTokenQuota(data.quota);
+                }
+                if (!response.ok) {
+                    if (data.error_code === 'quota_exceeded' && typeof window.openGlobalTokenQuotaModal === 'function') {
+                        closeModal();
+                        window.openGlobalTokenQuotaModal();
+                    }
+                    const message = data.error === 'privacy_ack_required'
+                        ? '请先确认隐私契约与边界说明，再开始新会话。'
+                        : (data.error || '创建会话失败，请稍后重试。');
+                    setFormError(message);
+                    privacyError.textContent = message;
+                    confirmBtn.disabled = false;
+                    return;
+                }
+                window.location.href = data.session_url;
+            } catch (_) {
+                const message = '创建会话失败，请稍后重试。';
+                setFormError(message);
+                privacyError.textContent = message;
+                confirmBtn.disabled = false;
+            }
+        }
+
+        forms.forEach((form) => {
+            form.addEventListener('submit', (event) => {
+                event.preventDefault();
+                setFormError('');
+                const select = form.querySelector('select[name="selected_model"]');
+                const option = select.options[select.selectedIndex];
+                openModal({
+                    personaId: form.querySelector('input[name="persona_id"]').value,
+                    personaTitle: form.querySelector('h3').textContent.trim(),
+                    selectedModel: select.value,
+                    modelLabel: option ? option.textContent.trim() : '默认模型',
+                });
+            });
+        });
+
+        checkbox.addEventListener('change', () => {
+            privacyError.textContent = '';
+            confirmBtn.disabled = !checkbox.checked;
+        });
+        confirmBtn.addEventListener('click', createSession);
+        cancelBtn.addEventListener('click', closeModal);
+        modal.addEventListener('click', (event) => {
+            if (event.target === modal) {
+                closeModal();
+            }
+        });
+        document.addEventListener('keydown', (event) => {
+            if (event.key === 'Escape' && modal.classList.contains('active')) {
+                closeModal();
+            }
+        });
+    })();
+</script>
+{% endblock %}

@@ -3,7 +3,7 @@
 交互式讨论室测试脚本 - 令牌制版本
 
 运行方式：
-    docker exec -i ai_counselor-backend-1 python /app/run_interactive_test.py
+    docker exec -i ai_counselor-backend-1 python /app/tests/manual/roundtable_interactive.py
 """
 import os
 import sys

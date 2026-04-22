@@ -38,6 +38,9 @@ Thumbs.db
 # Project specific
 logs/
 *.log
+.runtime/
+db.sqlite3
+.playwright-mcp/
 backend/staticfiles/
 staticfiles/
 frontend/dist/

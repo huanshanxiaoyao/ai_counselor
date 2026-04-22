@@ -2,17 +2,18 @@
 """
 Test script for LLM providers.
 """
-import os
 import sys
+from pathlib import Path
 
-# Add backend to path
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), 'backend'))
+# Add project root to path
+ROOT_DIR = Path(__file__).resolve().parents[2]
+sys.path.insert(0, str(ROOT_DIR))
 
-from llm.client import LLMClient
-from llm.providers import get_provider
+from backend.llm.client import LLMClient
+from backend.llm.providers import get_provider
 
 
-def test_provider(provider_name: str):
+def run_provider(provider_name: str):
     """Test a specific provider."""
     print(f"\n{'='*60}")
     print(f"Testing provider: {provider_name}")
@@ -47,13 +48,13 @@ def test_provider(provider_name: str):
         return False
 
 
-def test_all_providers():
+def run_all_providers():
     """Test all configured providers."""
     providers = ['openai', 'qwen', 'deepseek', 'minimax']
     results = {}
 
     for provider in providers:
-        results[provider] = test_provider(provider)
+        results[provider] = run_provider(provider)
 
     print(f"\n{'='*60}")
     print("SUMMARY")
@@ -70,10 +71,11 @@ def test_all_providers():
 if __name__ == '__main__':
     # Load .env file if exists
     from dotenv import load_dotenv
+    import os
     load_dotenv()
 
     print("Starting LLM Provider Tests")
     print(f"Python: {sys.version}")
     print(f"Working directory: {os.getcwd()}")
 
-    test_all_providers()
+    run_all_providers()

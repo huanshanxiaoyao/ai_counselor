@@ -1,4 +1,6 @@
 import json
+import logging
+from contextlib import contextmanager
 from types import SimpleNamespace
 from unittest.mock import patch
 
@@ -7,7 +9,25 @@ from django.contrib.auth import get_user_model
 from django.test import Client, override_settings
 
 from backend.roundtable.models import QuotaFeedback, TokenQuotaState, TokenUsageLedger
-from backend.roundtable.services.token_quota import parse_subject_key
+from backend.roundtable.services.token_quota import (
+    QuotaExceededError,
+    ensure_within_quota_or_raise,
+    parse_subject_key,
+    record_token_usage,
+)
+
+
+@contextmanager
+def _capture_named_logger(caplog, logger_name: str, level: int = logging.INFO):
+    target_logger = logging.getLogger(logger_name)
+    previous_level = target_logger.level
+    target_logger.addHandler(caplog.handler)
+    target_logger.setLevel(level)
+    try:
+        yield
+    finally:
+        target_logger.removeHandler(caplog.handler)
+        target_logger.setLevel(previous_level)
 
 
 def _minimal_chars():
@@ -134,3 +154,42 @@ def test_chat_api_blocks_when_quota_exceeded():
     )
     assert resp.status_code == 402
     assert resp.json()['error_code'] == 'quota_exceeded'
+
+
+@pytest.mark.django_db
+@override_settings(TOKEN_QUOTA_LIMIT=100)
+def test_record_token_usage_logs_warn_level_transition(caplog):
+    subject = parse_subject_key('anon:quota-log-1')
+
+    with _capture_named_logger(caplog, 'backend.roundtable.services.token_quota', level=logging.WARNING):
+        snapshot = record_token_usage(
+            subject=subject,
+            source='moodpal.cbt.turn',
+            total_tokens=85,
+            prompt_tokens=40,
+            completion_tokens=45,
+            provider='qwen',
+            model='test-model',
+        )
+
+    assert snapshot['warn_level'] == 80
+    assert 'Token quota warn level raised' in caplog.text
+
+
+@pytest.mark.django_db
+@override_settings(TOKEN_QUOTA_LIMIT=100)
+def test_ensure_within_quota_logs_block(caplog):
+    TokenQuotaState.objects.create(
+        subject_key='anon:quota-log-2',
+        subject_type=TokenQuotaState.SubjectType.ANON,
+        anon_id='quota-log-2',
+        used_tokens=100,
+        quota_limit=100,
+    )
+    subject = parse_subject_key('anon:quota-log-2')
+
+    with _capture_named_logger(caplog, 'backend.roundtable.services.token_quota', level=logging.WARNING):
+        with pytest.raises(QuotaExceededError):
+            ensure_within_quota_or_raise(subject)
+
+    assert 'Token quota exceeded' in caplog.text

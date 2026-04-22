@@ -3,6 +3,7 @@ Token usage accounting + quota guard services.
 """
 from __future__ import annotations
 
+import logging
 import uuid
 from dataclasses import dataclass
 from typing import Optional
@@ -18,6 +19,7 @@ from backend.roundtable.models import (
 )
 
 ANON_USAGE_COOKIE_KEY = "anon_usage_id"
+logger = logging.getLogger(__name__)
 
 
 @dataclass(frozen=True)
@@ -166,6 +168,13 @@ def get_quota_snapshot(subject: UsageSubject) -> dict:
 def ensure_within_quota_or_raise(subject: UsageSubject) -> dict:
     snapshot = get_quota_snapshot(subject)
     if snapshot["is_exceeded"]:
+        logger.warning(
+            "Token quota exceeded subject=%s used=%s limit=%s warn_level=%s",
+            snapshot["subject_key"],
+            snapshot["used_tokens"],
+            snapshot["quota_limit"],
+            snapshot["warn_level"],
+        )
         raise QuotaExceededError(snapshot)
     return snapshot
 
@@ -198,6 +207,7 @@ def record_token_usage(
             state = _get_or_create_quota_state(subject)
             state = TokenQuotaState.objects.select_for_update().get(pk=state.pk)
 
+        previous_warn_level = int(state.last_warn_level or 0)
         TokenUsageLedger.objects.create(
             subject_key=subject.key,
             subject_type=subject.subject_type,
@@ -215,7 +225,18 @@ def record_token_usage(
         state.used_tokens += total
         state.last_warn_level = _calc_warn_level(state.used_tokens, state.quota_limit)
         state.save(update_fields=["used_tokens", "last_warn_level", "updated_at"])
-        return _serialize_snapshot(state)
+        snapshot = _serialize_snapshot(state)
+        if snapshot["warn_level"] > previous_warn_level:
+            logger.warning(
+                "Token quota warn level raised subject=%s source=%s previous=%s current=%s used=%s limit=%s",
+                subject.key,
+                source,
+                previous_warn_level,
+                snapshot["warn_level"],
+                snapshot["used_tokens"],
+                snapshot["quota_limit"],
+            )
+        return snapshot
 
 
 def submit_quota_feedback(

@@ -1,0 +1,463 @@
+{% extends 'common/base.html' %}
+
+{% block title %}MoodPal 会话{% endblock %}
+
+{% block extra_css %}
+<style>
+    .session-shell { max-width: 1040px; margin: 0 auto; display: grid; gap: 18px; }
+    .session-card {
+        padding: 24px;
+        border-radius: 22px;
+        border: 1px solid rgba(255,255,255,0.08);
+        background: rgba(255,255,255,0.04);
+    }
+    .session-head { display: flex; justify-content: space-between; gap: 16px; align-items: flex-start; }
+    .session-head h2 { margin: 0 0 6px; }
+    .session-meta { color: #c9d4da; font-size: 14px; line-height: 1.7; }
+    .session-badge {
+        padding: 6px 10px;
+        border-radius: 999px;
+        background: rgba(78, 205, 196, 0.12);
+        color: #4ecdc4;
+        font-size: 12px;
+    }
+    .session-note {
+        color: #f3c677;
+        font-size: 14px;
+        line-height: 1.7;
+    }
+    .session-note strong {
+        color: #fff1c7;
+    }
+    .safety-banner {
+        display: none;
+        padding: 16px 18px;
+        border-radius: 18px;
+        background: rgba(255, 111, 97, 0.12);
+        border: 1px solid rgba(255, 111, 97, 0.28);
+        color: #ffe1db;
+        line-height: 1.7;
+    }
+    .safety-banner.active {
+        display: block;
+    }
+    .chat-log {
+        display: grid;
+        gap: 12px;
+        min-height: 260px;
+    }
+    .chat-empty {
+        padding: 18px;
+        border-radius: 18px;
+        background: rgba(0,0,0,0.18);
+        color: #dce4e8;
+        line-height: 1.7;
+    }
+    .chat-bubble {
+        max-width: 82%;
+        padding: 14px 16px;
+        border-radius: 18px;
+        line-height: 1.7;
+        background: rgba(255,255,255,0.06);
+        border: 1px solid rgba(255,255,255,0.08);
+    }
+    .chat-bubble.user {
+        margin-left: auto;
+        background: rgba(78, 205, 196, 0.12);
+        border-color: rgba(78, 205, 196, 0.22);
+    }
+    .chat-bubble.assistant {
+        margin-right: auto;
+    }
+    .chat-role {
+        font-size: 12px;
+        color: #97aeb8;
+        margin-bottom: 6px;
+    }
+    .composer {
+        display: grid;
+        gap: 12px;
+    }
+    .composer textarea {
+        width: 100%;
+        min-height: 116px;
+        border-radius: 16px;
+        border: 1px solid rgba(255,255,255,0.12);
+        background: rgba(0,0,0,0.22);
+        color: white;
+        padding: 14px;
+        resize: vertical;
+        box-sizing: border-box;
+    }
+    .composer-actions {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        gap: 14px;
+        flex-wrap: wrap;
+    }
+    .composer button,
+    .session-actions button {
+        appearance: none;
+        border: none;
+        border-radius: 14px;
+        padding: 12px 16px;
+        font-weight: 700;
+        cursor: pointer;
+    }
+    .composer button {
+        background: #4ecdc4;
+        color: #0f1719;
+    }
+    .composer button[disabled] {
+        opacity: 0.6;
+        cursor: default;
+    }
+    .composer-hint {
+        color: #c9d4da;
+        font-size: 14px;
+    }
+    .composer-error {
+        min-height: 20px;
+        color: #ffb4a2;
+        font-size: 14px;
+    }
+    .session-actions {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        gap: 14px;
+        flex-wrap: wrap;
+    }
+    .session-actions button {
+        background: #ff6f61;
+        color: white;
+    }
+    .debug-card {
+        display: none;
+        border: 1px solid rgba(78, 205, 196, 0.28);
+        background: rgba(14, 36, 40, 0.76);
+    }
+    .debug-card.active {
+        display: block;
+    }
+    .debug-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+        gap: 12px;
+        margin-top: 14px;
+    }
+    .debug-item {
+        padding: 12px 14px;
+        border-radius: 14px;
+        background: rgba(255,255,255,0.04);
+        border: 1px solid rgba(255,255,255,0.08);
+    }
+    .debug-label {
+        font-size: 12px;
+        color: #97aeb8;
+        margin-bottom: 6px;
+    }
+    .debug-value {
+        font-size: 14px;
+        color: #f6fbfd;
+        word-break: break-word;
+    }
+    .debug-json {
+        margin-top: 14px;
+        padding: 14px;
+        border-radius: 14px;
+        background: rgba(0,0,0,0.28);
+        border: 1px solid rgba(255,255,255,0.08);
+        color: #dbe7ec;
+        white-space: pre-wrap;
+        word-break: break-word;
+        overflow-x: auto;
+        font-size: 12px;
+        line-height: 1.7;
+    }
+    @media (max-width: 720px) {
+        .chat-bubble { max-width: 100%; }
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<section class="session-shell">
+    <div class="session-card">
+        <div class="session-head">
+            <div>
+                <h2>{{ session.get_persona_id_display }}</h2>
+                <div class="session-meta">
+                    会话 ID：{{ session.id }}<br>
+                    当前状态：{{ session.get_status_display }}<br>
+                    模型：{{ selected_model_label|default:"默认模型" }}<br>
+                    隐私契约：{% if session.metadata.privacy_acknowledged %}已确认{% else %}未确认{% endif %}<br>
+                    超时规则：{{ session.timeout_seconds }} 秒无回复自动结束并进入摘要确认页
+                </div>
+            </div>
+            <div class="session-badge">Session Active</div>
+        </div>
+    </div>
+
+    <div class="session-card">
+        <div class="session-note">
+            <strong>非医疗建议：</strong>MoodPal 提供的是情绪支持与方法性陪伴，不替代医疗诊断、紧急援助或线下治疗。
+            当前页面中的原始消息只做短期保留，等你结束会话后再决定是否仅保留摘要。
+        </div>
+    </div>
+
+    <div class="session-card safety-banner" id="safety-banner">
+        当前已切换到安全优先模式。普通角色化对话已暂停，如果你愿意，请先确认你现在是否安全，也可以只回复“安全”或“不安全”。
+    </div>
+
+    <div class="session-card">
+        <div class="chat-log" id="chat-log">
+            {% if messages %}
+                {% for message in messages %}
+                <div class="chat-bubble {{ message.role }}">
+                    <div class="chat-role">{% if message.role == 'user' %}你{% else %}{{ session.get_persona_id_display }}{% endif %}</div>
+                    <div>{{ message.content|linebreaksbr }}</div>
+                </div>
+                {% endfor %}
+            {% else %}
+            <div class="chat-empty" id="chat-empty">
+                现在可以直接说一句你想聊的事情。当前版本会先把原始消息临时保留在本次会话里，等你结束后生成摘要草稿，再由你决定保留摘要还是全部销毁。
+            </div>
+            {% endif %}
+        </div>
+    </div>
+
+    <div class="session-card">
+        <form class="composer" id="message-form">
+            <textarea id="message-input" name="content" placeholder="比如：我这几天总在反复想工作上的一个失误，停不下来。"></textarea>
+            <div class="composer-actions">
+                <div class="composer-hint" id="composer-hint">“逻辑派的邻家哥哥”当前会走 CBT Graph 首版链路；其余角色暂时仍使用占位版陪伴回复。</div>
+                <button type="submit" id="message-submit">发送</button>
+            </div>
+            <div class="composer-error" id="message-error"></div>
+        </form>
+    </div>
+
+    <div class="session-card debug-card" id="debug-card">
+        <div class="session-head">
+            <div>
+                <h2>开发态 Debug</h2>
+                <div class="session-meta">仅在 DEBUG 模式下显示当前 CBT 运行时状态，便于观察路由、熔断和 trace。</div>
+            </div>
+            <div class="session-badge">Debug</div>
+        </div>
+        <div class="debug-grid">
+            <div class="debug-item">
+                <div class="debug-label">Engine</div>
+                <div class="debug-value" id="debug-engine">-</div>
+            </div>
+            <div class="debug-item">
+                <div class="debug-label">Current Stage</div>
+                <div class="debug-value" id="debug-stage">-</div>
+            </div>
+            <div class="debug-item">
+                <div class="debug-label">Current Track</div>
+                <div class="debug-value" id="debug-track">-</div>
+            </div>
+            <div class="debug-item">
+                <div class="debug-label">Technique</div>
+                <div class="debug-value" id="debug-technique">-</div>
+            </div>
+            <div class="debug-item">
+                <div class="debug-label">Next Fallback</div>
+                <div class="debug-value" id="debug-fallback">-</div>
+            </div>
+            <div class="debug-item">
+                <div class="debug-label">Circuit Breaker</div>
+                <div class="debug-value" id="debug-circuit">-</div>
+            </div>
+            <div class="debug-item">
+                <div class="debug-label">Trace Length</div>
+                <div class="debug-value" id="debug-trace-length">0</div>
+            </div>
+        </div>
+        <pre class="debug-json" id="debug-json"></pre>
+    </div>
+
+    <div class="session-card">
+        <form method="post" class="session-actions">
+            {% csrf_token %}
+            <input type="hidden" name="action" value="end">
+            <div class="session-meta">如果现在结束，会立即生成摘要草稿并跳转摘要页。之后你只能选择“保留摘要”或“全部销毁”，原始消息不会继续开放。</div>
+            <button type="submit">结束本次会话</button>
+        </form>
+    </div>
+</section>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    (function initMoodPalSession() {
+        const sessionState = JSON.parse('{{ session_json|escapejs }}');
+        const timeoutMs = Number(sessionState.timeout_seconds || 1800) * 1000;
+        const endUrl = `/api/moodpal/session/${sessionState.id}/end`;
+        const messageUrl = `/api/moodpal/session/${sessionState.id}/message`;
+        const log = document.getElementById('chat-log');
+        const empty = document.getElementById('chat-empty');
+        const form = document.getElementById('message-form');
+        const input = document.getElementById('message-input');
+        const submit = document.getElementById('message-submit');
+        const hint = document.getElementById('composer-hint');
+        const errorBox = document.getElementById('message-error');
+        const safetyBanner = document.getElementById('safety-banner');
+        const debugCard = document.getElementById('debug-card');
+        const debugEngine = document.getElementById('debug-engine');
+        const debugStage = document.getElementById('debug-stage');
+        const debugTrack = document.getElementById('debug-track');
+        const debugTechnique = document.getElementById('debug-technique');
+        const debugFallback = document.getElementById('debug-fallback');
+        const debugCircuit = document.getElementById('debug-circuit');
+        const debugTraceLength = document.getElementById('debug-trace-length');
+        const debugJson = document.getElementById('debug-json');
+        let timer = null;
+        let ended = false;
+
+        function escapeHtml(text) {
+            const div = document.createElement('div');
+            div.textContent = text || '';
+            return div.innerHTML;
+        }
+
+        function formatContent(text) {
+            return escapeHtml(text).replace(/\n/g, '<br>');
+        }
+
+        function appendMessage(message) {
+            if (empty) {
+                empty.remove();
+            }
+            const bubble = document.createElement('div');
+            bubble.className = `chat-bubble ${message.role}`;
+            const role = document.createElement('div');
+            role.className = 'chat-role';
+            role.textContent = message.role === 'user' ? '你' : sessionState.persona_title;
+            const content = document.createElement('div');
+            content.innerHTML = formatContent(message.content || '');
+            bubble.appendChild(role);
+            bubble.appendChild(content);
+            log.appendChild(bubble);
+            bubble.scrollIntoView({behavior: 'smooth', block: 'end'});
+        }
+
+        async function autoEnd() {
+            if (ended) return;
+            ended = true;
+            try {
+                const resp = await csrfFetch(endUrl, {method: 'POST'});
+                const data = await resp.json();
+                if (data.summary_url) {
+                    window.location.href = data.summary_url;
+                    return;
+                }
+            } catch (_) {}
+            window.location.href = `/moodpal/session/${sessionState.id}/summary/`;
+        }
+
+        function applySessionState(nextSession) {
+            if (!nextSession) return;
+            sessionState.status = nextSession.status || sessionState.status;
+            if (nextSession.last_activity_at) {
+                sessionState.last_activity_at = nextSession.last_activity_at;
+            }
+            if (typeof nextSession.crisis_active !== 'undefined') {
+                sessionState.crisis_active = nextSession.crisis_active;
+            }
+            if (nextSession.debug) {
+                sessionState.debug = nextSession.debug;
+            } else if (Object.prototype.hasOwnProperty.call(nextSession, 'debug')) {
+                delete sessionState.debug;
+            }
+            renderDebugPanel(sessionState.debug);
+        }
+
+        function showSafetyMode() {
+            safetyBanner.classList.add('active');
+            hint.textContent = '安全优先模式已启用。现在先不继续普通对话，请优先确认你是否安全，或联系身边可信任的人与紧急援助。';
+            input.placeholder = '如果你愿意，可以只回复：安全 / 不安全';
+        }
+
+        function renderDebugPanel(debug) {
+            if (!debug || !debug.enabled) {
+                debugCard.classList.remove('active');
+                return;
+            }
+            debugCard.classList.add('active');
+            debugEngine.textContent = debug.engine || '-';
+            debugStage.textContent = debug.current_stage || '-';
+            debugTrack.textContent = debug.current_track || '-';
+            debugTechnique.textContent = debug.current_technique_id || '-';
+            debugFallback.textContent = debug.next_fallback_action || '-';
+            debugCircuit.textContent = debug.circuit_breaker_open ? 'open' : 'closed';
+            debugTraceLength.textContent = String(debug.trace_length || 0);
+            debugJson.textContent = JSON.stringify(debug.cbt_state || debug, null, 2);
+        }
+
+        function scheduleAutoEnd() {
+            if (ended) return;
+            clearTimeout(timer);
+            const lastActivityMs = sessionState.last_activity_at ? new Date(sessionState.last_activity_at).getTime() : Date.now();
+            const remainingMs = Math.max(0, lastActivityMs + timeoutMs - Date.now());
+            timer = window.setTimeout(autoEnd, remainingMs);
+        }
+
+        async function sendMessage(event) {
+            event.preventDefault();
+            if (ended) return;
+            const content = (input.value || '').trim();
+            if (!content) {
+                errorBox.textContent = '请输入内容后再发送。';
+                return;
+            }
+
+            errorBox.textContent = '';
+            submit.disabled = true;
+            try {
+                const resp = await csrfFetch(messageUrl, {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({content}),
+                });
+                const data = await resp.json();
+                if (data.quota && typeof window.updateGlobalTokenQuota === 'function') {
+                    window.updateGlobalTokenQuota(data.quota);
+                }
+                if (resp.status === 409 && data.summary_url) {
+                    window.location.href = data.summary_url;
+                    return;
+                }
+                if (!resp.ok) {
+                    errorBox.textContent = data.error || '发送失败，请稍后重试。';
+                    if (data.error_code === 'quota_exceeded' && typeof window.openGlobalTokenQuotaModal === 'function') {
+                        window.openGlobalTokenQuotaModal();
+                    }
+                    return;
+                }
+                applySessionState(data.session);
+                if (data.safety_override || (data.session && data.session.crisis_active)) {
+                    showSafetyMode();
+                }
+                (data.messages || []).forEach(appendMessage);
+                input.value = '';
+                scheduleAutoEnd();
+            } catch (_) {
+                errorBox.textContent = '发送失败，请稍后重试。';
+            } finally {
+                submit.disabled = false;
+            }
+        }
+
+        form.addEventListener('submit', sendMessage);
+        if (sessionState.crisis_active) {
+            showSafetyMode();
+        }
+        renderDebugPanel(sessionState.debug);
+        scheduleAutoEnd();
+    })();
+</script>
+{% endblock %}

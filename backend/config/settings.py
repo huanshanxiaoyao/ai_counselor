@@ -38,6 +38,7 @@ INSTALLED_APPS = [
     'rest_framework',
     'channels',
     'backend.chat',
+    'backend.moodpal',
     'backend.roundtable',
 ]
 

@@ -115,4 +115,4 @@ Provider configs are defined in `backend/llm/providers.py` (not only in `setting
 
 ### Test configuration
 
-Tests use `backend.config.settings_test` (set in `pytest.ini`). The `testpaths` is `tests/` at the project root. The CI also runs `pytest backend/ -v` to pick up any tests placed inside the app directories.
+Tests use `backend.config.settings_test` (set in root `pytest.ini`). The default `testpaths` is `tests/` at the project root.

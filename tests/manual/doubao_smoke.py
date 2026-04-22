@@ -44,7 +44,7 @@ def list_available_models(client: OpenAI):
         return []
 
 
-def test_model(client: OpenAI, model: str) -> bool:
+def run_model(client: OpenAI, model: str) -> bool:
     """测试指定模型是否可用。"""
     try:
         response = client.chat.completions.create(
@@ -70,7 +70,7 @@ def test_model(client: OpenAI, model: str) -> bool:
         return False
 
 
-def test_doubao():
+def run_doubao():
     """测试豆包大模型 API 连通性。"""
     print("=" * 60)
     print("豆包大模型 API 连通性测试")
@@ -102,7 +102,7 @@ def test_doubao():
         # 如果指定了模型，测试该模型
         if DOUBAO_MODEL:
             print(f"测试指定模型: {DOUBAO_MODEL}")
-            if test_model(client, DOUBAO_MODEL):
+            if run_model(client, DOUBAO_MODEL):
                 return True
 
         # 否则尝试测试一些常用模型
@@ -118,7 +118,7 @@ def test_doubao():
         for model in recommended_models:
             if model in model_ids:
                 print(f"\n尝试模型: {model}")
-                if test_model(client, model):
+                if run_model(client, model):
                     print(f"\n推荐设置环境变量: DOUBAO_MODEL={model}")
                     return True
 
@@ -137,5 +137,5 @@ def test_doubao():
 
 
 if __name__ == "__main__":
-    success = test_doubao()
+    success = run_doubao()
     sys.exit(0 if success else 1)

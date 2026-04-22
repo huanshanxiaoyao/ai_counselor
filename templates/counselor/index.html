@@ -1,0 +1,11 @@
+{% extends 'common/base.html' %}
+
+{% block title %}情绪管理伴侣{% endblock %}
+
+{% block content %}
+<section class="hero" style="max-width: 840px; margin: 0 auto; text-align: left;">
+    <h2>情绪管理伴侣</h2>
+    <p>这是面向心理咨询 Agent 的产品入口页。当前版本先提供基础占位，后续会逐步接入咨询流程、记忆管理与安全边界能力。</p>
+    <p style="margin-top: 16px; opacity: 0.9;">如果你想继续体验多模型问答能力，请前往 <a href="{% url 'llm_test' %}" style="color: #4ecdc4;">LLM 对比测试</a>。</p>
+</section>
+{% endblock %}
