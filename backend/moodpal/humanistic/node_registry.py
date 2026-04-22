@@ -9,7 +9,7 @@ from ..runtime.interfaces import NodeRegistry
 from ..runtime.types import TechniqueNode
 
 
-CBT_DOCS_DIR = Path(__file__).resolve().parents[3] / 'docs' / 'moodpal' / 'CBT'
+HUMANISTIC_DOCS_DIR = Path(__file__).resolve().parents[3] / 'docs' / 'moodpal' / 'Humanistic'
 
 
 def _to_node(payload: dict) -> TechniqueNode:
@@ -28,9 +28,9 @@ def _to_node(payload: dict) -> TechniqueNode:
 
 
 @lru_cache(maxsize=1)
-def load_cbt_nodes() -> dict[str, TechniqueNode]:
+def load_humanistic_nodes() -> dict[str, TechniqueNode]:
     nodes = {}
-    for file_path in sorted(CBT_DOCS_DIR.glob('*.json')):
+    for file_path in sorted(HUMANISTIC_DOCS_DIR.glob('*.json')):
         with file_path.open('r', encoding='utf-8') as handle:
             payload = json.load(handle)
         for item in payload:
@@ -39,9 +39,9 @@ def load_cbt_nodes() -> dict[str, TechniqueNode]:
     return nodes
 
 
-class CBTNodeRegistry(NodeRegistry[dict]):
+class HumanisticNodeRegistry(NodeRegistry[dict]):
     def __init__(self, nodes: Optional[dict[str, TechniqueNode]] = None):
-        self._nodes = nodes or load_cbt_nodes()
+        self._nodes = nodes or load_humanistic_nodes()
 
     def all_nodes(self) -> list[TechniqueNode]:
         return list(self._nodes.values())

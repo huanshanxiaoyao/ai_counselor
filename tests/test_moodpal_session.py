@@ -634,7 +634,7 @@ def test_append_message_pair_aborts_normal_reply_after_concurrent_crisis_activat
 
 
 @pytest.mark.django_db
-def test_moodpal_non_cbt_persona_keeps_placeholder_reply():
+def test_moodpal_empathy_persona_uses_humanistic_runtime():
     client = _anon_client('anon-placeholder')
     session = MoodPalSession.objects.create(
         usage_subject='anon:anon-placeholder',
@@ -643,16 +643,39 @@ def test_moodpal_non_cbt_persona_keeps_placeholder_reply():
         status=MoodPalSession.Status.ACTIVE,
     )
 
+    with patch('backend.moodpal.services.humanistic_runtime_service.LLMClient.complete_with_metadata', side_effect=RuntimeError('boom')):
+        resp = client.post(
+            f'/api/moodpal/session/{session.id}/message',
+            data=json.dumps({'content': '我今天真的很委屈。'}),
+            content_type='application/json',
+        )
+
+    assert resp.status_code == 201
+    assistant_message = MoodPalMessage.objects.filter(session=session, role=MoodPalMessage.Role.ASSISTANT).latest('id')
+    assert assistant_message.metadata['engine'] == 'humanistic_graph'
+    assert assistant_message.metadata['fallback_used'] is True
+    assert assistant_message.metadata['technique_id'] == 'hum_reflect_feeling'
+
+
+@pytest.mark.django_db
+def test_moodpal_insight_persona_keeps_placeholder_reply():
+    client = _anon_client('anon-insight-placeholder')
+    session = MoodPalSession.objects.create(
+        usage_subject='anon:anon-insight-placeholder',
+        anon_id='anon-insight-placeholder',
+        persona_id=MoodPalSession.Persona.INSIGHT_MENTOR,
+        status=MoodPalSession.Status.ACTIVE,
+    )
+
     resp = client.post(
         f'/api/moodpal/session/{session.id}/message',
-        data=json.dumps({'content': '我今天真的很委屈。'}),
+        data=json.dumps({'content': '这种感觉以前总是在类似场景里冒出来。'}),
         content_type='application/json',
     )
 
     assert resp.status_code == 201
     assistant_message = MoodPalMessage.objects.filter(session=session, role=MoodPalMessage.Role.ASSISTANT).latest('id')
     assert assistant_message.metadata['engine'] == 'placeholder'
-    assert '最想被理解的部分' in assistant_message.content
 
 
 @pytest.mark.django_db

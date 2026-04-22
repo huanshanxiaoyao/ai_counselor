@@ -3,7 +3,7 @@
 ## 1. 文档定位
 - 文档目标：定义 MoodPal MVP 的整体技术架构、核心主流程、状态机分层方式，以及“阅后即焚”的实现框架。
 - 文档边界：本稿优先解决总体方案与主链路，不展开过细的数据模型、字段定义和 API 细节。
-- 对齐基线：以 [prd.md](/Users/suchong/workspace/ai_counselor/docs/counselor/prd.md) 为产品输入，以当前 Django 项目为实现基础。
+- 对齐基线：以 [prd.md](/Users/suchong/workspace/ai_counselor/docs/moodpal/prd.md) 为产品输入，以当前 Django 项目为实现基础。
 
 ## 2. 设计原则
 1. 保持现有 Django 架构，不新起一套 FastAPI 服务。
@@ -150,7 +150,7 @@ MVP 建议采用：
 1. 一个 Supervisor Graph 负责统一入口、风险抢占、Persona -> Therapy Mode 映射。
 2. 每个主要流派一张子图：
    - CBT Graph
-   - Empathy Graph
+   - Humanistic Graph
    - Exploratory Graph
 
 ### 7.3 节点职责建议
@@ -351,9 +351,11 @@ MVP 先采用两段式策略：
 1. Session / Summary / CrisisEvent 的数据模型草案
 2. LangGraph state schema 与节点输入输出
 3. CBT Graph 的首版节点定义
-   - 详见 [cbt_langgraph_design.md](/Users/suchong/workspace/ai_counselor/docs/counselor/cbt_langgraph_design.md)
-4. Burn Pipeline 的失败补偿与幂等实现
-5. 前端页面状态与交互细化
+   - 详见 [cbt_langgraph_design.md](/Users/suchong/workspace/ai_counselor/docs/moodpal/cbt_langgraph_design.md)
+4. Humanistic Graph 的首版节点定义
+   - 详见 [humanistic_langgraph_design.md](/Users/suchong/workspace/ai_counselor/docs/moodpal/humanistic_langgraph_design.md)
+5. Burn Pipeline 的失败补偿与幂等实现
+6. 前端页面状态与交互细化
 
 实施顺序建议：
-- 详见 [mvp_execution_plan.md](/Users/suchong/workspace/ai_counselor/docs/counselor/mvp_execution_plan.md)
+- 详见 [mvp_execution_plan.md](/Users/suchong/workspace/ai_counselor/docs/moodpal/mvp_execution_plan.md)

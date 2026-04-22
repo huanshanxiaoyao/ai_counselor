@@ -242,23 +242,43 @@ def _serialize_debug_payload(session: MoodPalSession) -> dict | None:
         return None
 
     metadata = dict(session.metadata or {})
-    cbt_state = dict(metadata.get('cbt_state') or {})
-    if session.persona_id != MoodPalSession.Persona.LOGIC_BROTHER and not cbt_state:
+    runtime_state_key = ''
+    engine = 'placeholder'
+    runtime_state = {}
+    current_path_key = 'current_track'
+
+    if session.persona_id == MoodPalSession.Persona.LOGIC_BROTHER:
+        runtime_state_key = 'cbt_state'
+        engine = 'cbt_graph'
+        runtime_state = dict(metadata.get(runtime_state_key) or {})
+        current_path_key = 'current_track'
+    elif session.persona_id == MoodPalSession.Persona.EMPATHY_SISTER:
+        runtime_state_key = 'humanistic_state'
+        engine = 'humanistic_graph'
+        runtime_state = dict(metadata.get(runtime_state_key) or {})
+        current_path_key = 'current_phase'
+    else:
+        runtime_state = {}
+
+    if session.persona_id != MoodPalSession.Persona.INSIGHT_MENTOR and not runtime_state:
         return None
 
-    technique_trace = list(cbt_state.get('technique_trace') or [])
-    return {
+    technique_trace = list(runtime_state.get('technique_trace') or [])
+    payload = {
         'enabled': True,
-        'engine': 'cbt_graph' if session.persona_id == MoodPalSession.Persona.LOGIC_BROTHER else 'placeholder',
-        'current_stage': cbt_state.get('current_stage', ''),
-        'current_track': cbt_state.get('current_track', ''),
-        'current_technique_id': cbt_state.get('current_technique_id', ''),
-        'next_fallback_action': cbt_state.get('next_fallback_action', ''),
-        'circuit_breaker_open': bool(cbt_state.get('circuit_breaker_open')),
+        'engine': engine,
+        'current_stage': runtime_state.get('current_stage', ''),
+        'current_track': runtime_state.get(current_path_key, ''),
+        'current_phase': runtime_state.get('current_phase', ''),
+        'current_technique_id': runtime_state.get('current_technique_id', ''),
+        'next_fallback_action': runtime_state.get('next_fallback_action', ''),
+        'circuit_breaker_open': bool(runtime_state.get('circuit_breaker_open')),
         'technique_trace': technique_trace,
         'trace_length': len(technique_trace),
-        'cbt_state': cbt_state,
+        'runtime_state_key': runtime_state_key,
+        'runtime_state': runtime_state,
     }
+    return payload
 
 
 def serialize_session(session: MoodPalSession) -> dict:

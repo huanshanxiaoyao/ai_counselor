@@ -3,9 +3,9 @@
 ## 1. 文档目的
 本文件聚焦一个问题：
 
-如何把 `docs/counselor/CBT/` 目录下的结构化 CBT 知识，与 MoodPal 的 LangGraph 状态机结合起来，完成 CBT 流派角色的对话实现。
+如何把 `docs/moodpal/CBT/` 目录下的结构化 CBT 知识，与 MoodPal 的 LangGraph 状态机结合起来，完成 CBT 流派角色的对话实现。
 
-本文档是 [tech_design.md](/Users/suchong/workspace/ai_counselor/docs/counselor/tech_design.md) 的专题细化稿，重点解决：
+本文档是 [tech_design.md](/Users/suchong/workspace/ai_counselor/docs/moodpal/tech_design.md) 的专题细化稿，重点解决：
 1. CBT JSON 到 LangGraph 的映射方式
 2. CBT 会话主状态机如何设计
 3. 具体技术节点如何被路由、执行、退出
@@ -14,7 +14,7 @@
 ## 2. 当前 CBT JSON 的结构理解
 
 ### 2.1 现有资产不是“资料”，而是“节点库”
-`docs/counselor/CBT/` 目录中的 4 个 JSON 文件已经接近可执行节点定义。每条记录都包含：
+`docs/moodpal/CBT/` 目录中的 4 个 JSON 文件已经接近可执行节点定义。每条记录都包含：
 1. `node_id`
 2. `name`
 3. `category`

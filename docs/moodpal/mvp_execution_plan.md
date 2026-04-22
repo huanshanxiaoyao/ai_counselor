@@ -10,7 +10,7 @@
 2. 必须先把 MoodPal 的产品骨架、会话生命周期、Burn Pipeline 搭起来。
 3. CBT 是第一条流派落地线，但不是整个产品的起点。
 
-## 2. 三份文档的职责分工
+## 2. 四份文档的职责分工
 
 ### 2.1 `prd.md`
 负责定义：
@@ -34,6 +34,13 @@
 3. CBT Router / Executor / ExitEvaluator
 4. CBT JSON 节点库的消费方式
 
+### 2.4 `humanistic_langgraph_design.md`
+负责定义：
+1. 人本主义流派如何接入总框架
+2. Humanistic Graph 的状态机
+3. Humanistic Router / Executor / ResonanceEvaluator
+4. 人本主义 JSON 节点库与图层异常处理的协同方式
+
 ## 3. 总体推进原则
 1. 先搭产品主链路，再做流派细节。
 2. 先搭共享骨架，再做 CBT 专项。
@@ -49,9 +56,9 @@
 3. 冻结 CBT 第一版实现方向
 
 输入文档：
-1. [prd.md](/Users/suchong/workspace/ai_counselor/docs/counselor/prd.md)
-2. [tech_design.md](/Users/suchong/workspace/ai_counselor/docs/counselor/tech_design.md)
-3. [cbt_langgraph_design.md](/Users/suchong/workspace/ai_counselor/docs/counselor/cbt_langgraph_design.md)
+1. [prd.md](/Users/suchong/workspace/ai_counselor/docs/moodpal/prd.md)
+2. [tech_design.md](/Users/suchong/workspace/ai_counselor/docs/moodpal/tech_design.md)
+3. [cbt_langgraph_design.md](/Users/suchong/workspace/ai_counselor/docs/moodpal/cbt_langgraph_design.md)
 
 产出：
 1. 后续代码实现不再修改核心路线

@@ -9,6 +9,7 @@ from ..models import MoodPalMessage, MoodPalSession, MoodPalSessionEvent
 from .cbt_runtime_service import merge_cbt_state_metadata, run_cbt_turn
 from .burn_service import record_session_event
 from .crisis_service import CrisisCheckResult, build_sticky_crisis_result
+from .humanistic_runtime_service import merge_humanistic_state_metadata, run_humanistic_turn
 
 
 logger = logging.getLogger(__name__)
@@ -80,6 +81,9 @@ def _build_assistant_reply(
     if session.persona_id == MoodPalSession.Persona.LOGIC_BROTHER:
         result = run_cbt_turn(session=session, history_messages=history_messages)
         return result.reply_text, result.reply_metadata, result.persist_patch
+    if session.persona_id == MoodPalSession.Persona.EMPATHY_SISTER:
+        result = run_humanistic_turn(session=session, history_messages=history_messages)
+        return result.reply_text, result.reply_metadata, result.persist_patch
     return _build_placeholder_reply(session, user_content), {
         'engine': 'placeholder',
         'track': '',
@@ -118,6 +122,31 @@ def _build_system_fallback_reply(session: MoodPalSession, user_content: str) -> 
     }
 
 
+def _merge_runtime_state_metadata(session: MoodPalSession, state_patch: dict | None) -> dict:
+    if session.persona_id == MoodPalSession.Persona.LOGIC_BROTHER:
+        return merge_cbt_state_metadata(session.metadata, state_patch)
+    if session.persona_id == MoodPalSession.Persona.EMPATHY_SISTER:
+        return merge_humanistic_state_metadata(session.metadata, state_patch)
+    return dict(session.metadata or {})
+
+
+def _apply_crisis_runtime_state(session: MoodPalSession, metadata: dict) -> dict:
+    if session.persona_id == MoodPalSession.Persona.LOGIC_BROTHER:
+        cbt_state = dict(metadata.get('cbt_state') or {})
+        cbt_state['safety_status'] = 'crisis_override'
+        cbt_state['current_stage'] = 'wrap_up'
+        metadata['cbt_state'] = cbt_state
+        return metadata
+    if session.persona_id == MoodPalSession.Persona.EMPATHY_SISTER:
+        humanistic_state = dict(metadata.get('humanistic_state') or {})
+        humanistic_state['safety_status'] = 'crisis_override'
+        humanistic_state['current_stage'] = 'wrap_up'
+        humanistic_state['current_phase'] = 'safety_override'
+        metadata['humanistic_state'] = humanistic_state
+        return metadata
+    return metadata
+
+
 def append_crisis_response_pair(session: MoodPalSession, *, user_content: str, crisis_result: CrisisCheckResult):
     content = (user_content or '').strip()
     if not content:
@@ -140,10 +169,7 @@ def append_crisis_response_pair(session: MoodPalSession, *, user_content: str, c
 
         metadata = dict(session.metadata or {})
         metadata['crisis_active'] = True
-        cbt_state = dict(metadata.get('cbt_state') or {})
-        cbt_state['safety_status'] = 'crisis_override'
-        cbt_state['current_stage'] = 'wrap_up'
-        metadata['cbt_state'] = cbt_state
+        metadata = _apply_crisis_runtime_state(session, metadata)
         session.metadata = metadata
         session.last_activity_at = now
         session.save(update_fields=['status', 'activated_at', 'metadata', 'last_activity_at', 'updated_at'])
@@ -223,7 +249,7 @@ def append_message_pair(session: MoodPalSession, *, user_content: str):
         raise ValueError('session_unavailable')
     history_messages = list_serialized_messages(session)
     try:
-        assistant_content, assistant_metadata, cbt_state_patch = _build_assistant_reply(session, history_messages, content)
+        assistant_content, assistant_metadata, runtime_state_patch = _build_assistant_reply(session, history_messages, content)
     except Exception:
         logger.exception(
             'MoodPal assistant runtime failed, using system fallback session=%s subject=%s persona=%s',
@@ -232,7 +258,7 @@ def append_message_pair(session: MoodPalSession, *, user_content: str):
             session.persona_id,
         )
         assistant_content, assistant_metadata = _build_system_fallback_reply(session, content)
-        cbt_state_patch = None
+        runtime_state_patch = None
 
     with transaction.atomic():
         session = MoodPalSession.objects.select_for_update().get(pk=session.pk)
@@ -241,8 +267,8 @@ def append_message_pair(session: MoodPalSession, *, user_content: str):
         if (session.metadata or {}).get('crisis_active') and assistant_metadata.get('engine') != 'crisis_guard':
             raise ValueError('session_unavailable')
         update_fields = ['last_activity_at', 'updated_at']
-        if cbt_state_patch:
-            session.metadata = merge_cbt_state_metadata(session.metadata, cbt_state_patch)
+        if runtime_state_patch:
+            session.metadata = _merge_runtime_state_metadata(session, runtime_state_patch)
             update_fields.append('metadata')
         session.last_activity_at = timezone.now()
         session.save(update_fields=update_fields)
