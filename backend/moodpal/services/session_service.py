@@ -10,6 +10,7 @@ from django.utils import timezone
 from backend.roundtable.services.token_quota import subject_from_request
 
 from ..models import MoodPalMessage, MoodPalSession
+from ..psychoanalysis.pattern_memory import build_psychoanalysis_memory
 from .burn_service import (
     destroy_raw_messages,
     mark_summary_destroyed,
@@ -90,6 +91,41 @@ def _build_session_metadata(*, privacy_acknowledged: bool) -> dict:
     return metadata
 
 
+def _compact_context_text(value: str, limit: int = 800) -> str:
+    text = (value or '').strip()
+    if len(text) <= limit:
+        return text
+    return f'{text[:limit].rstrip()}...'
+
+
+def _serialize_last_summary_context(source_session: MoodPalSession) -> dict:
+    summary_text = _compact_context_text(source_session.summary_final or source_session.summary_draft)
+    if not summary_text:
+        return {}
+    return {
+        'source_session_id': str(source_session.id),
+        'source_persona_id': source_session.persona_id,
+        'source_persona_title': source_session.get_persona_id_display(),
+        'summary_text': summary_text,
+        'saved_at': (source_session.metadata or {}).get('summary_saved_at') or source_session.updated_at.isoformat(),
+    }
+
+
+def _load_recent_saved_summary_context(subject_key: str) -> dict:
+    queryset = (
+        MoodPalSession.objects.filter(
+            usage_subject=subject_key,
+            summary_action=MoodPalSession.SummaryAction.SAVED,
+        )
+        .order_by('-updated_at', '-created_at')
+    )
+    for session in queryset[:5]:
+        payload = _serialize_last_summary_context(session)
+        if payload:
+            return payload
+    return {}
+
+
 def create_session(
     *,
     request,
@@ -101,13 +137,17 @@ def create_session(
     if not privacy_acknowledged:
         raise ValueError('privacy_ack_required')
     access = _access_context_from_request(request)
+    metadata = _build_session_metadata(privacy_acknowledged=privacy_acknowledged)
+    last_summary = _load_recent_saved_summary_context(access.subject_key)
+    if last_summary:
+        metadata['last_summary'] = last_summary
     return MoodPalSession.objects.create(
         owner_id=access.owner_id,
         usage_subject=access.subject_key,
         anon_id=access.anon_id,
         persona_id=persona_id,
         selected_model=normalize_selected_model(selected_model),
-        metadata=_build_session_metadata(privacy_acknowledged=privacy_acknowledged),
+        metadata=metadata,
         status=MoodPalSession.Status.STARTING,
         last_activity_at=_now(),
     )
@@ -207,7 +247,14 @@ def save_summary(session: MoodPalSession, *, summary_text: str) -> MoodPalSessio
         session.summary_final = (summary_text or '').strip() or session.summary_draft
         session.summary_action = MoodPalSession.SummaryAction.SAVED
         session.status = MoodPalSession.Status.CLOSED
-        session.save(update_fields=['summary_final', 'summary_action', 'status', 'updated_at'])
+        metadata = dict(session.metadata or {})
+        psychoanalysis_memory = build_psychoanalysis_memory(session)
+        if psychoanalysis_memory:
+            metadata['psychoanalysis_memory_v1'] = psychoanalysis_memory
+        else:
+            metadata.pop('psychoanalysis_memory_v1', None)
+        session.metadata = metadata
+        session.save(update_fields=['summary_final', 'summary_action', 'status', 'metadata', 'updated_at'])
 
         destroy_raw_messages(session)
         mark_summary_saved(session, summary_length=len(session.summary_final))
@@ -230,7 +277,11 @@ def destroy_summary(session: MoodPalSession) -> MoodPalSession:
         session.summary_draft = ''
         session.summary_action = MoodPalSession.SummaryAction.DESTROYED
         session.status = MoodPalSession.Status.CLOSED
-        session.save(update_fields=['summary_final', 'summary_draft', 'summary_action', 'status', 'updated_at'])
+        metadata = dict(session.metadata or {})
+        metadata.pop('psychoanalysis_memory_v1', None)
+        metadata.pop('pattern_memory_candidate', None)
+        session.metadata = metadata
+        session.save(update_fields=['summary_final', 'summary_draft', 'summary_action', 'status', 'metadata', 'updated_at'])
 
         destroy_raw_messages(session)
         mark_summary_destroyed(session)
@@ -242,6 +293,7 @@ def _serialize_debug_payload(session: MoodPalSession) -> dict | None:
         return None
 
     metadata = dict(session.metadata or {})
+    last_summary = dict(metadata.get('last_summary') or {})
     runtime_state_key = ''
     engine = 'placeholder'
     runtime_state = {}
@@ -257,10 +309,15 @@ def _serialize_debug_payload(session: MoodPalSession) -> dict | None:
         engine = 'humanistic_graph'
         runtime_state = dict(metadata.get(runtime_state_key) or {})
         current_path_key = 'current_phase'
+    elif session.persona_id == MoodPalSession.Persona.INSIGHT_MENTOR:
+        runtime_state_key = 'psychoanalysis_state'
+        engine = 'psychoanalysis_graph'
+        runtime_state = dict(metadata.get(runtime_state_key) or {})
+        current_path_key = 'current_phase'
     else:
         runtime_state = {}
 
-    if session.persona_id != MoodPalSession.Persona.INSIGHT_MENTOR and not runtime_state:
+    if session.persona_id != MoodPalSession.Persona.INSIGHT_MENTOR and not runtime_state and not last_summary:
         return None
 
     technique_trace = list(runtime_state.get('technique_trace') or [])
@@ -273,8 +330,15 @@ def _serialize_debug_payload(session: MoodPalSession) -> dict | None:
         'current_technique_id': runtime_state.get('current_technique_id', ''),
         'next_fallback_action': runtime_state.get('next_fallback_action', ''),
         'circuit_breaker_open': bool(runtime_state.get('circuit_breaker_open')),
+        'last_route_reason': runtime_state.get('last_route_reason', ''),
         'technique_trace': technique_trace,
         'trace_length': len(technique_trace),
+        'last_summary_available': bool(last_summary.get('summary_text')),
+        'last_summary_source_session_id': last_summary.get('source_session_id', ''),
+        'last_summary_source_persona_id': last_summary.get('source_persona_id', ''),
+        'last_summary_preview': _compact_context_text(last_summary.get('summary_text', ''), limit=180),
+        'recalled_pattern_memory_count': int(runtime_state.get('recalled_pattern_memory_count') or 0),
+        'recalled_pattern_memory_preview': runtime_state.get('recalled_pattern_memory_preview') or [],
         'runtime_state_key': runtime_state_key,
         'runtime_state': runtime_state,
     }

@@ -10,12 +10,10 @@ from django.conf import settings
 from backend.llm import LLMClient
 from backend.roundtable.services.token_quota import parse_subject_key, record_token_usage
 
-from ..humanistic import HumanisticGraph
-from ..humanistic.resonance_evaluator import HumanisticResonanceEvaluator
-from ..humanistic.resonance_rule_config import get_resonance_rule
-from ..humanistic.signal_extractor import extract_humanistic_turn_signals
-from ..humanistic.state import HumanisticGraphState, build_humanistic_state_from_session
-from ..runtime.types import ExitEvaluationResult
+from ..psychoanalysis import PsychoanalysisGraph
+from ..psychoanalysis.pattern_memory import load_recent_pattern_memory
+from ..psychoanalysis.signal_extractor import extract_psychoanalysis_turn_signals
+from ..psychoanalysis.state import PsychoanalysisGraphState, build_psychoanalysis_state_from_session
 from .model_option_service import normalize_selected_model
 
 
@@ -26,26 +24,30 @@ ALLOWED_STATE_PATCH_KEYS = {
     'current_stage',
     'current_phase',
     'current_technique_id',
+    'focus_theme',
+    'association_openness',
+    'manifest_theme',
+    'repetition_theme_candidate',
+    'working_hypothesis',
+    'pattern_confidence',
+    'insight_score',
+    'insight_ready',
+    'interpretation_depth',
+    'active_defense',
+    'resistance_level',
+    'alliance_strength',
+    'relational_pull',
+    'here_and_now_triggered',
+    'containment_needed',
     'emotional_intensity',
-    'dominant_emotions',
-    'emotional_clarity',
-    'openness_level',
-    'self_attack_flag',
-    'shame_signal',
-    'body_signal_present',
-    'body_focus_ready',
-    'felt_sense_description',
-    'resonance_score',
-    'being_understood_signal',
-    'relational_trust',
-    'unmet_need_candidate',
-    'self_compassion_shift',
-    'homework_candidate',
     'safety_status',
     'alliance_rupture_detected',
-    'numbness_detected',
+    'resistance_spike_detected',
     'advice_pull_detected',
     'exception_flags',
+    'last_route_reason',
+    'recalled_pattern_memory_count',
+    'recalled_pattern_memory_preview',
     'technique_attempt_count',
     'technique_stall_count',
     'last_progress_marker',
@@ -53,34 +55,15 @@ ALLOWED_STATE_PATCH_KEYS = {
     'next_fallback_action',
     'technique_trace',
 }
-PRE_FLIGHT_SIGNAL_KEYS = {
-    'emotional_intensity',
-    'dominant_emotions',
-    'emotional_clarity',
-    'openness_level',
-    'self_attack_flag',
-    'shame_signal',
-    'body_signal_present',
-    'body_focus_ready',
-    'unmet_need_candidate',
-    'alliance_rupture_detected',
-    'numbness_detected',
-    'advice_pull_detected',
-    'exception_flags',
-}
-LOCAL_FALLBACK_STATE_KEYS = {
-    'emotional_intensity',
-    'dominant_emotions',
-    'emotional_clarity',
-    'body_signal_present',
-    'body_focus_ready',
-    'unmet_need_candidate',
-    'self_compassion_shift',
-}
 PERSISTABLE_STATE_KEYS = ALLOWED_STATE_PATCH_KEYS | {
     'therapy_mode',
     'selected_model',
     'session_phase',
+}
+FORCE_PERSIST_STATE_KEYS = {
+    'last_route_reason',
+    'recalled_pattern_memory_count',
+    'recalled_pattern_memory_preview',
 }
 TURN_RESPONSE_SCHEMA_PROMPT = '\n'.join(
     [
@@ -88,23 +71,24 @@ TURN_RESPONSE_SCHEMA_PROMPT = '\n'.join(
         '{',
         '  "reply": "给用户看的自然中文回复",',
         '  "state_patch": {',
+        '    "focus_theme": "",',
+        '    "association_openness": "partial",',
+        '    "manifest_theme": "",',
+        '    "repetition_theme_candidate": "",',
+        '    "working_hypothesis": "",',
+        '    "pattern_confidence": 0.0,',
+        '    "insight_score": 0,',
+        '    "insight_ready": false,',
+        '    "interpretation_depth": "surface",',
+        '    "active_defense": "",',
+        '    "resistance_level": "low",',
+        '    "alliance_strength": "medium",',
+        '    "relational_pull": "",',
+        '    "here_and_now_triggered": false,',
+        '    "containment_needed": false,',
         '    "emotional_intensity": 0,',
-        '    "dominant_emotions": [],',
-        '    "emotional_clarity": "diffuse",',
-        '    "openness_level": "partial",',
-        '    "self_attack_flag": false,',
-        '    "shame_signal": false,',
-        '    "body_signal_present": false,',
-        '    "body_focus_ready": false,',
-        '    "felt_sense_description": "",',
-        '    "resonance_score": 0,',
-        '    "being_understood_signal": false,',
-        '    "relational_trust": "medium",',
-        '    "unmet_need_candidate": "",',
-        '    "self_compassion_shift": "",',
-        '    "homework_candidate": "",',
         '    "alliance_rupture_detected": false,',
-        '    "numbness_detected": false,',
+        '    "resistance_spike_detected": false,',
         '    "advice_pull_detected": false',
         '  }',
         '}',
@@ -114,20 +98,20 @@ TURN_RESPONSE_SCHEMA_PROMPT = '\n'.join(
 
 
 @dataclass(frozen=True)
-class HumanisticRuntimeTurnResult:
+class PsychoanalysisRuntimeTurnResult:
     reply_text: str
     reply_metadata: dict
-    state: HumanisticGraphState
+    state: PsychoanalysisGraphState
     persist_patch: dict = field(default_factory=dict)
     used_fallback: bool = False
 
 
-def run_humanistic_turn(*, session, history_messages: list[dict]) -> HumanisticRuntimeTurnResult:
+def run_psychoanalysis_turn(*, session, history_messages: list[dict]) -> PsychoanalysisRuntimeTurnResult:
     state = _load_state(session=session, history_messages=history_messages)
-    graph = HumanisticGraph()
+    graph = PsychoanalysisGraph()
     plan = graph.plan_turn(state)
     logger.info(
-        'MoodPal Humanistic route selected session=%s subject=%s phase=%s technique=%s reason=%s fallback_action=%s circuit_open=%s',
+        'MoodPal Psychoanalysis route selected session=%s subject=%s phase=%s technique=%s reason=%s fallback_action=%s circuit_open=%s',
         session.id,
         session.usage_subject,
         plan.selection.track,
@@ -143,6 +127,7 @@ def run_humanistic_turn(*, session, history_messages: list[dict]) -> HumanisticR
         next_state = dict(execution_state)
         next_state['current_stage'] = 'wrap_up'
         next_state['current_phase'] = plan.selection.track
+        next_state['last_route_reason'] = plan.selection.reason
         _append_trace(next_state, plan.selection, progress_marker='safety_override', done=True, should_trip_circuit=False)
         _log_trace(
             session=session,
@@ -153,10 +138,10 @@ def run_humanistic_turn(*, session, history_messages: list[dict]) -> HumanisticR
             done=True,
             should_trip_circuit=False,
         )
-        return HumanisticRuntimeTurnResult(
+        return PsychoanalysisRuntimeTurnResult(
             reply_text=reply_text,
             reply_metadata={
-                'engine': 'humanistic_graph',
+                'engine': 'psychoanalysis_graph',
                 'track': plan.selection.track,
                 'technique_id': '',
                 'reason': plan.selection.reason,
@@ -179,7 +164,7 @@ def run_humanistic_turn(*, session, history_messages: list[dict]) -> HumanisticR
     )
     if used_fallback:
         logger.warning(
-            'MoodPal Humanistic local fallback applied session=%s subject=%s phase=%s technique=%s',
+            'MoodPal Psychoanalysis local fallback applied session=%s subject=%s phase=%s technique=%s',
             session.id,
             session.usage_subject,
             plan.selection.track,
@@ -187,16 +172,14 @@ def run_humanistic_turn(*, session, history_messages: list[dict]) -> HumanisticR
         )
 
     next_state = dict(execution_state)
-    next_state.update(_build_effective_execution_state_patch(raw_state_patch, used_fallback=used_fallback))
+    next_state.update(_sanitize_state_patch(raw_state_patch))
     next_state['current_phase'] = plan.selection.track
     next_state['current_technique_id'] = plan.selection.technique_id
-    next_state['current_stage'] = 'evaluate_resonance'
+    next_state['current_stage'] = 'evaluate_insight'
     next_state['last_assistant_message'] = reply_text
+    next_state['last_route_reason'] = plan.selection.reason
 
-    if used_fallback:
-        evaluation = _build_local_fallback_evaluation(next_state, plan.selection.technique_id)
-    else:
-        evaluation = graph.evaluate_turn(next_state, plan.selection.technique_id)
+    evaluation = graph.evaluate_turn(next_state, plan.selection.technique_id)
     next_state.update(_sanitize_state_patch(evaluation.state_patch))
 
     if evaluation.should_trip_circuit:
@@ -215,7 +198,7 @@ def run_humanistic_turn(*, session, history_messages: list[dict]) -> HumanisticR
     )
     if evaluation.should_trip_circuit:
         logger.warning(
-            'MoodPal Humanistic circuit breaker opened session=%s subject=%s technique=%s trip_reason=%s next_action=%s attempts=%s stalls=%s',
+            'MoodPal Psychoanalysis circuit breaker opened session=%s subject=%s technique=%s trip_reason=%s next_action=%s attempts=%s stalls=%s',
             session.id,
             session.usage_subject,
             plan.selection.technique_id,
@@ -233,10 +216,10 @@ def run_humanistic_turn(*, session, history_messages: list[dict]) -> HumanisticR
         done=evaluation.done,
         should_trip_circuit=evaluation.should_trip_circuit,
     )
-    return HumanisticRuntimeTurnResult(
+    return PsychoanalysisRuntimeTurnResult(
         reply_text=reply_text,
         reply_metadata={
-            'engine': 'humanistic_graph',
+            'engine': 'psychoanalysis_graph',
             'track': plan.selection.track,
             'technique_id': plan.selection.technique_id,
             'reason': plan.selection.reason,
@@ -252,14 +235,16 @@ def run_humanistic_turn(*, session, history_messages: list[dict]) -> HumanisticR
     )
 
 
-def _load_state(*, session, history_messages: list[dict]) -> HumanisticGraphState:
+def _load_state(*, session, history_messages: list[dict]) -> PsychoanalysisGraphState:
     metadata = dict(session.metadata or {})
-    persisted_state = dict(metadata.get('humanistic_state') or {})
+    persisted_state = dict(metadata.get('psychoanalysis_state') or {})
     last_summary = metadata.get('last_summary') or {}
-    state = build_humanistic_state_from_session(
+    recalled_pattern_memory = load_recent_pattern_memory(session=session)
+    state = build_psychoanalysis_state_from_session(
         session=session,
         history_messages=history_messages,
         last_summary=last_summary,
+        recalled_pattern_memory=recalled_pattern_memory,
     )
     for key, value in persisted_state.items():
         if key in ALLOWED_STATE_PATCH_KEYS or key in {'therapy_mode', 'selected_model'}:
@@ -269,23 +254,26 @@ def _load_state(*, session, history_messages: list[dict]) -> HumanisticGraphStat
     state['persona_id'] = session.persona_id
     state['selected_model'] = session.selected_model
     state['session_phase'] = session.status
+    state['recalled_pattern_memory'] = recalled_pattern_memory
+    state['recalled_pattern_memory_count'] = len(recalled_pattern_memory)
+    state['recalled_pattern_memory_preview'] = _build_recalled_pattern_memory_preview(recalled_pattern_memory)
     if history_messages:
         state['last_user_message'] = history_messages[-1].get('content', '') if history_messages[-1].get('role') == 'user' else state.get('last_user_message', '')
         if len(history_messages) >= 2 and history_messages[-2].get('role') == 'assistant':
             state['last_assistant_message'] = history_messages[-2].get('content', '')
-    inferred_patch = _build_preflight_signal_patch(state, extract_humanistic_turn_signals(state))
+    inferred_patch = extract_psychoanalysis_turn_signals(state)
     if _should_apply_inferred_signals(state.get('last_user_message', ''), inferred_patch):
-        state.update(inferred_patch)
+        state.update(_sanitize_state_patch(inferred_patch))
     if history_messages:
-        state['current_stage'] = 'affect_assessment'
+        state['current_stage'] = 'determine_phase'
     return state
 
 
-def merge_humanistic_state_metadata(metadata: dict | None, state_patch: dict | None) -> dict:
+def merge_psychoanalysis_state_metadata(metadata: dict | None, state_patch: dict | None) -> dict:
     next_metadata = dict(metadata or {})
-    merged_state = dict(next_metadata.get('humanistic_state') or {})
+    merged_state = dict(next_metadata.get('psychoanalysis_state') or {})
     merged_state.update(_sanitize_persistable_state_patch(state_patch))
-    next_metadata['humanistic_state'] = merged_state
+    next_metadata['psychoanalysis_state'] = merged_state
     return next_metadata
 
 
@@ -308,7 +296,7 @@ def _log_trace(*, session, state: dict, phase: str, technique_id: str, progress_
     trace = list(state.get('technique_trace') or [])
     turn_index = trace[-1]['turn_index'] if trace else 0
     logger.info(
-        'MoodPal Humanistic trace appended session=%s subject=%s turn=%s phase=%s technique=%s progress=%s done=%s circuit_open=%s stage=%s',
+        'MoodPal Psychoanalysis trace appended session=%s subject=%s turn=%s phase=%s technique=%s progress=%s done=%s circuit_open=%s stage=%s',
         session.id,
         session.usage_subject,
         turn_index,
@@ -321,7 +309,7 @@ def _log_trace(*, session, state: dict, phase: str, technique_id: str, progress_
     )
 
 
-def _prepare_state_for_selection(state: HumanisticGraphState, technique_id: str) -> HumanisticGraphState:
+def _prepare_state_for_selection(state: PsychoanalysisGraphState, technique_id: str) -> PsychoanalysisGraphState:
     next_state = dict(state)
     current_technique_id = (next_state.get('current_technique_id') or '').strip()
     if technique_id and technique_id != current_technique_id:
@@ -339,108 +327,60 @@ def _should_apply_inferred_signals(user_text: str, inferred_patch: dict) -> bool
         return False
     if len(source) >= 8:
         return True
-    if inferred_patch.get('dominant_emotions'):
+    if inferred_patch.get('repetition_theme_candidate'):
         return True
-    if inferred_patch.get('unmet_need_candidate'):
+    if inferred_patch.get('active_defense'):
         return True
-    if inferred_patch.get('openness_level') == 'guarded':
+    if inferred_patch.get('relational_pull'):
         return True
-    if int(inferred_patch.get('emotional_intensity') or 0) >= 6:
+    if inferred_patch.get('association_openness') == 'guarded':
         return True
     signal_flags = (
-        'self_attack_flag',
-        'shame_signal',
-        'body_signal_present',
         'alliance_rupture_detected',
-        'numbness_detected',
+        'resistance_spike_detected',
         'advice_pull_detected',
+        'here_and_now_triggered',
+        'containment_needed',
     )
     return any(bool(inferred_patch.get(key)) for key in signal_flags)
-
-
-def _build_preflight_signal_patch(state: HumanisticGraphState, inferred_patch: Optional[dict]) -> dict:
-    sanitized = _sanitize_state_patch(inferred_patch)
-    patch = {
-        key: value
-        for key, value in sanitized.items()
-        if key in PRE_FLIGHT_SIGNAL_KEYS
-    }
-    if patch.get('alliance_rupture_detected'):
-        patch['relational_trust'] = 'weak'
-    else:
-        patch.pop('relational_trust', None)
-    return patch
-
-
-def _build_effective_execution_state_patch(state_patch: Optional[dict], *, used_fallback: bool) -> dict:
-    sanitized = _sanitize_state_patch(state_patch)
-    if not used_fallback:
-        return sanitized
-    return {
-        key: value
-        for key, value in sanitized.items()
-        if key in LOCAL_FALLBACK_STATE_KEYS
-    }
-
-
-def _build_local_fallback_evaluation(state: HumanisticGraphState, technique_id: str) -> ExitEvaluationResult:
-    previous_progress = str(state.get('last_progress_marker') or '')
-    attempt_count = int(state.get('technique_attempt_count') or 0) + 1
-    stall_count = int(state.get('technique_stall_count') or 0) + 1
-    should_trip_circuit = bool(state.get('circuit_breaker_open'))
-    trip_reason = ''
-    next_fallback_action = 'retry_same_technique'
-
-    if not should_trip_circuit and (
-        attempt_count >= HumanisticResonanceEvaluator.MAX_ATTEMPTS
-        or stall_count >= HumanisticResonanceEvaluator.MAX_STALLS
-    ):
-        should_trip_circuit = True
-        trip_reason = 'attempt_limit_reached' if attempt_count >= HumanisticResonanceEvaluator.MAX_ATTEMPTS else 'stall_limit_reached'
-        next_fallback_action = get_resonance_rule(technique_id).trip_action
-    elif should_trip_circuit:
-        next_fallback_action = str(state.get('next_fallback_action') or get_resonance_rule(technique_id).trip_action)
-
-    return ExitEvaluationResult(
-        done=False,
-        confidence=0.0,
-        reason='local_fallback_no_clinical_progress',
-        state_patch={
-            'technique_attempt_count': attempt_count,
-            'technique_stall_count': stall_count,
-            'last_progress_marker': previous_progress,
-            'circuit_breaker_open': should_trip_circuit,
-            'next_fallback_action': next_fallback_action,
-        },
-        progress_marker=previous_progress,
-        stall_detected=True,
-        technique_attempt_count=attempt_count,
-        technique_stall_count=stall_count,
-        should_trip_circuit=should_trip_circuit,
-        trip_reason=trip_reason,
-        next_fallback_action=next_fallback_action,
-    )
 
 
 def _sanitize_state_patch(state_patch: Optional[dict]) -> dict:
     if not isinstance(state_patch, dict):
         return {}
     sanitized = {key: value for key, value in state_patch.items() if key in ALLOWED_STATE_PATCH_KEYS}
-    if isinstance(sanitized.get('dominant_emotions'), str):
-        sanitized['dominant_emotions'] = [item.strip() for item in sanitized['dominant_emotions'].split('、') if item.strip()]
+    if 'recalled_pattern_memory_preview' in sanitized and not isinstance(sanitized['recalled_pattern_memory_preview'], list):
+        sanitized['recalled_pattern_memory_preview'] = []
+    if 'pattern_confidence' in sanitized:
+        try:
+            sanitized['pattern_confidence'] = float(sanitized['pattern_confidence'] or 0.0)
+        except (TypeError, ValueError):
+            sanitized['pattern_confidence'] = 0.0
+    if 'insight_score' in sanitized:
+        try:
+            sanitized['insight_score'] = max(0, min(10, int(sanitized['insight_score'] or 0)))
+        except (TypeError, ValueError):
+            sanitized['insight_score'] = 0
+    if 'emotional_intensity' in sanitized:
+        try:
+            sanitized['emotional_intensity'] = max(0, min(10, int(sanitized['emotional_intensity'] or 0)))
+        except (TypeError, ValueError):
+            sanitized['emotional_intensity'] = 0
     return sanitized
 
 
 def _sanitize_persistable_state_patch(state_patch: Optional[dict]) -> dict:
     if not isinstance(state_patch, dict):
         return {}
-    sanitized = {key: value for key, value in state_patch.items() if key in PERSISTABLE_STATE_KEYS}
-    if isinstance(sanitized.get('dominant_emotions'), str):
-        sanitized['dominant_emotions'] = [item.strip() for item in sanitized['dominant_emotions'].split('、') if item.strip()]
-    return sanitized
+    filtered = {key: value for key, value in state_patch.items() if key in PERSISTABLE_STATE_KEYS}
+    allowed_subset = _sanitize_state_patch({key: value for key, value in filtered.items() if key in ALLOWED_STATE_PATCH_KEYS})
+    for key in ('therapy_mode', 'selected_model', 'session_phase'):
+        if key in filtered:
+            allowed_subset[key] = filtered[key]
+    return allowed_subset
 
 
-def _serialize_persistable_state(state: HumanisticGraphState) -> dict:
+def _serialize_persistable_state(state: PsychoanalysisGraphState) -> dict:
     return {
         key: value
         for key, value in state.items()
@@ -448,17 +388,31 @@ def _serialize_persistable_state(state: HumanisticGraphState) -> dict:
     }
 
 
-def _build_persistable_state_patch(previous_state: HumanisticGraphState, next_state: HumanisticGraphState) -> dict:
+def _build_persistable_state_patch(previous_state: PsychoanalysisGraphState, next_state: PsychoanalysisGraphState) -> dict:
     previous_persistable = _serialize_persistable_state(previous_state)
     next_persistable = _serialize_persistable_state(next_state)
     return {
         key: value
         for key, value in next_persistable.items()
-        if previous_persistable.get(key) != value
+        if key in FORCE_PERSIST_STATE_KEYS or previous_persistable.get(key) != value
     }
 
 
-def _execute_turn(*, session, state: HumanisticGraphState, technique_id: str, system_prompt: str, user_prompt: str, fallback_reply: str):
+def _build_recalled_pattern_memory_preview(recalled_pattern_memory: list[dict]) -> list[dict]:
+    preview: list[dict] = []
+    for entry in recalled_pattern_memory[:2]:
+        preview.append(
+            {
+                'repetition_themes': list(entry.get('repetition_themes') or [])[:2],
+                'defense_patterns': list(entry.get('defense_patterns') or [])[:2],
+                'relational_pull': list(entry.get('relational_pull') or [])[:2],
+                'working_hypotheses': list(entry.get('working_hypotheses') or [])[:2],
+            }
+        )
+    return preview
+
+
+def _execute_turn(*, session, state: PsychoanalysisGraphState, technique_id: str, system_prompt: str, user_prompt: str, fallback_reply: str):
     provider_name, model_name = _resolve_provider_and_model(session.selected_model)
     schema_prompt = '\n'.join([user_prompt, '', TURN_RESPONSE_SCHEMA_PROMPT])
     try:
@@ -481,7 +435,7 @@ def _execute_turn(*, session, state: HumanisticGraphState, technique_id: str, sy
         if result.usage.total_tokens > 0:
             record_token_usage(
                 subject=parse_subject_key(session.usage_subject),
-                source='moodpal.humanistic.turn',
+                source='moodpal.psychoanalysis.turn',
                 total_tokens=result.usage.total_tokens,
                 prompt_tokens=result.usage.prompt_tokens,
                 completion_tokens=result.usage.completion_tokens,
@@ -495,7 +449,7 @@ def _execute_turn(*, session, state: HumanisticGraphState, technique_id: str, sy
             'usage': usage,
         }, False
     except Exception:
-        logger.exception('MoodPal Humanistic turn failed, using local fallback')
+        logger.exception('MoodPal Psychoanalysis turn failed, using local fallback')
         fallback = _build_local_fallback(state=state, technique_id=technique_id, fallback_reply=fallback_reply)
         return fallback['reply'], fallback.get('state_patch') or {}, {
             'provider': provider_name,
@@ -514,74 +468,96 @@ def _resolve_provider_and_model(selected_model: str) -> tuple[str, Optional[str]
     return provider_name, value or None
 
 
-def _build_local_fallback(*, state: HumanisticGraphState, technique_id: str, fallback_reply: str) -> dict:
+def _build_local_fallback(*, state: PsychoanalysisGraphState, technique_id: str, fallback_reply: str) -> dict:
     user_text = ' '.join((state.get('last_user_message') or '').split())
-    compact_text = user_text[:48].rstrip() + '...' if len(user_text) > 48 else user_text
+    compact_text = user_text[:56].rstrip() + '...' if len(user_text) > 56 else user_text
 
-    if technique_id == 'hum_validate_normalize':
+    if technique_id == 'psa_entry_containment':
         return {
-            'reply': fallback_reply or f'听到你说“{compact_text}”，这已经很不容易了。你现在有这样的反应并不奇怪，我先在这里陪着你，不急着把它讲清楚。',
+            'reply': fallback_reply or f'我们先不急着把这件事说透。你刚才提到“{compact_text}”，我会先把这句放在这里。我们只从这一小块开始，也可以。',
             'state_patch': {
-                'emotional_intensity': 7 if int(state.get('emotional_intensity') or 0) >= 8 else max(int(state.get('emotional_intensity') or 0), 6),
-                'being_understood_signal': True,
-                'relational_trust': 'medium',
+                'containment_needed': False,
+                'association_openness': 'partial',
+                'focus_theme': compact_text or state.get('focus_theme', ''),
             },
         }
-    if technique_id == 'hum_reflect_feeling':
+    if technique_id == 'psa_association_invite':
         return {
-            'reply': fallback_reply or '我听见的可能不只是难受，里面好像还有一点委屈和失落。你看看，我这次贴得近不近？',
+            'reply': fallback_reply or '刚才那里面像是已经有一条线露出来了。我们先不急着解释，只跟着那条最有感觉的线，再往前走一点点。',
             'state_patch': {
-                'dominant_emotions': ['委屈', '失落'],
-                'emotional_clarity': 'emerging',
+                'focus_theme': compact_text or state.get('focus_theme', ''),
+                'manifest_theme': compact_text or state.get('manifest_theme', ''),
+                'association_openness': 'open' if len(user_text) >= 24 else 'partial',
             },
         }
-    if technique_id == 'hum_body_focus':
+    if technique_id == 'psa_defense_clarification':
         return {
-            'reply': fallback_reply or '如果现在一下子说不清，也没关系。我们先不急着解释，只看看那份难受更像卡在胸口、喉咙，还是胃里，好吗？',
+            'reply': fallback_reply or '我有点注意到，每次一靠近那个让你难受的地方，你的话就会很快轻下来，像是有一部分你想先把自己收回去。我们先只看见这个动作。',
             'state_patch': {
-                'body_signal_present': True,
-                'body_focus_ready': True,
-                'felt_sense_description': '胸口有点堵',
-                'emotional_clarity': 'emerging',
+                'active_defense': state.get('active_defense', '') or 'withdrawal',
+                'resistance_level': 'medium',
             },
         }
-    if technique_id == 'hum_unconditional_regard':
+    if technique_id == 'psa_pattern_linking':
         return {
-            'reply': fallback_reply or '你现在这样责怪自己，说明你真的已经很痛了。我不会急着纠正你，但我想先陪你站在自己这边一点点。',
+            'reply': fallback_reply or '这听起来好像不只是这一回的偶发反应，而是一条反复会出现的线。我们先不急着解释它从哪里来，只把这条重复看清一点。',
             'state_patch': {
-                'self_attack_flag': False,
-                'self_compassion_shift': '允许自己先不要这么狠地责怪自己',
-                'resonance_score': 66,
+                'repetition_theme_candidate': state.get('repetition_theme_candidate', '') or 'repetition_pattern_present',
+                'pattern_confidence': max(float(state.get('pattern_confidence') or 0.0), 0.66),
             },
         }
-    if technique_id == 'hum_exception_alliance_repair':
+    if technique_id == 'psa_relational_here_now':
         return {
-            'reply': fallback_reply or '如果刚才那句话让你更烦了，我先停下来。那可能是我没贴住你。你可以直接告诉我，哪一句最让你觉得我没懂。',
+            'reply': fallback_reply or '好像就在刚才这一刻，你和我之间也突然有一点收紧了。我们可以先不谈别的，只停在这一刻，看看你最想从我这里防着的是什么。',
             'state_patch': {
-                'alliance_rupture_detected': True,
-                'relational_trust': state.get('relational_trust', 'weak') or 'weak',
+                'here_and_now_triggered': True,
+                'relational_pull': state.get('relational_pull', '') or 'testing_authority',
             },
         }
-    if technique_id == 'hum_exception_numbness_unfreeze':
+    if technique_id == 'psa_insight_integration':
         return {
-            'reply': fallback_reply or '先不用逼自己一定要说出一个准确的情绪。我们只抓一点点线索就够了。现在这份空白，更像空掉了、堵住了，还是麻掉了？',
+            'reply': fallback_reply or '我在想，会不会你心里一直有一套很快启动的保护方式：一感觉到关系里有点危险，你就先把问题收回到自己身上。这个理解不一定完全对，你听听看，哪一部分最贴近你？',
             'state_patch': {
-                'numbness_detected': False,
-                'body_signal_present': True,
-                'felt_sense_description': '像空掉了一块',
-                'openness_level': 'partial',
+                'working_hypothesis': state.get('working_hypothesis', '') or '一感到关系紧张，就会先把问题收回到自己身上',
+                'insight_score': max(int(state.get('insight_score') or 0), 6),
+                'interpretation_depth': 'integration',
             },
         }
-    if technique_id == 'hum_boundary_advice_pull':
+    if technique_id == 'psa_exception_resistance_soften':
         return {
-            'reply': fallback_reply or '我知道你现在最受不了的是一点抓手都没有。那我们先不把问题摊太大，只选一个你最想先处理的小点，好吗？',
+            'reply': fallback_reply or '我们可以先不硬往下走。你这句想退开的感觉很重要，我不会把门硬掰开。我们先只看见那个想收回去的动作，就已经够了。',
             'state_patch': {
-                'advice_pull_detected': True,
-                'openness_level': state.get('openness_level', 'guarded') or 'guarded',
-                'homework_candidate': '先选一个最想先处理的小点',
+                'resistance_spike_detected': False,
+                'resistance_level': 'medium',
+                'association_openness': 'partial',
+            },
+        }
+    if technique_id == 'psa_exception_alliance_repair':
+        return {
+            'reply': fallback_reply or '如果刚才那句话让你更想退开了，我先收回来。那可能是我没有贴住你。你可以直接告诉我，哪一句最让你觉得不对，我先把那里听明白。',
+            'state_patch': {
+                'alliance_rupture_detected': False,
+                'alliance_strength': 'medium',
+            },
+        }
+    if technique_id == 'psa_boundary_advice_pull':
+        return {
+            'reply': fallback_reply or '我听见你现在最受不了的是一点抓手都没有。那我们先不把问题摊太大，只选一个你最想先处理的小点，好吗？',
+            'state_patch': {
+                'advice_pull_detected': False,
+                'association_openness': 'partial',
+                'focus_theme': state.get('focus_theme', '') or compact_text,
+            },
+        }
+    if technique_id == 'psa_reflective_close':
+        return {
+            'reply': fallback_reply or '今天我们先把这条线轻轻放在这里：一感觉到别人不高兴，你就会很快把自己收回去。接下来不需要急着改掉它。下次它再冒出来时，只要先认出它，就已经很够了。',
+            'state_patch': {
+                'working_hypothesis': state.get('working_hypothesis', '') or '一感觉到别人不高兴，就会先把自己收回去',
+                'insight_score': max(int(state.get('insight_score') or 0), 5),
             },
         }
     return {
-        'reply': fallback_reply or '我先陪你把这一小步放稳，我们不急着一下子说透。',
+        'reply': fallback_reply or '我们先把这一小步放稳，不急着一下子看透。',
         'state_patch': {},
     }

@@ -10,6 +10,7 @@ from .cbt_runtime_service import merge_cbt_state_metadata, run_cbt_turn
 from .burn_service import record_session_event
 from .crisis_service import CrisisCheckResult, build_sticky_crisis_result
 from .humanistic_runtime_service import merge_humanistic_state_metadata, run_humanistic_turn
+from .psychoanalysis_runtime_service import merge_psychoanalysis_state_metadata, run_psychoanalysis_turn
 
 
 logger = logging.getLogger(__name__)
@@ -84,6 +85,9 @@ def _build_assistant_reply(
     if session.persona_id == MoodPalSession.Persona.EMPATHY_SISTER:
         result = run_humanistic_turn(session=session, history_messages=history_messages)
         return result.reply_text, result.reply_metadata, result.persist_patch
+    if session.persona_id == MoodPalSession.Persona.INSIGHT_MENTOR:
+        result = run_psychoanalysis_turn(session=session, history_messages=history_messages)
+        return result.reply_text, result.reply_metadata, result.persist_patch
     return _build_placeholder_reply(session, user_content), {
         'engine': 'placeholder',
         'track': '',
@@ -127,6 +131,8 @@ def _merge_runtime_state_metadata(session: MoodPalSession, state_patch: dict | N
         return merge_cbt_state_metadata(session.metadata, state_patch)
     if session.persona_id == MoodPalSession.Persona.EMPATHY_SISTER:
         return merge_humanistic_state_metadata(session.metadata, state_patch)
+    if session.persona_id == MoodPalSession.Persona.INSIGHT_MENTOR:
+        return merge_psychoanalysis_state_metadata(session.metadata, state_patch)
     return dict(session.metadata or {})
 
 
@@ -143,6 +149,13 @@ def _apply_crisis_runtime_state(session: MoodPalSession, metadata: dict) -> dict
         humanistic_state['current_stage'] = 'wrap_up'
         humanistic_state['current_phase'] = 'safety_override'
         metadata['humanistic_state'] = humanistic_state
+        return metadata
+    if session.persona_id == MoodPalSession.Persona.INSIGHT_MENTOR:
+        psychoanalysis_state = dict(metadata.get('psychoanalysis_state') or {})
+        psychoanalysis_state['safety_status'] = 'crisis_override'
+        psychoanalysis_state['current_stage'] = 'wrap_up'
+        psychoanalysis_state['current_phase'] = 'safety_override'
+        metadata['psychoanalysis_state'] = psychoanalysis_state
         return metadata
     return metadata
 

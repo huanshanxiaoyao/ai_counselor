@@ -156,14 +156,14 @@ RESONANCE_RULES = (
     ),
     TechniqueResonanceRule(
         technique_id='hum_unconditional_regard',
-        done_action='wrap_up_now',
+        done_action='switch_same_phase',
         trip_action='regress_to_holding',
         evaluator=_evaluate_accepting,
     ),
     TechniqueResonanceRule(
         technique_id='hum_exception_alliance_repair',
         done_action='switch_same_phase',
-        trip_action='wrap_up_now',
+        trip_action='regress_to_holding',
         evaluator=_evaluate_alliance_repair,
     ),
     TechniqueResonanceRule(
@@ -175,7 +175,7 @@ RESONANCE_RULES = (
     TechniqueResonanceRule(
         technique_id='hum_boundary_advice_pull',
         done_action='switch_same_phase',
-        trip_action='wrap_up_now',
+        trip_action='regress_to_holding',
         evaluator=_evaluate_advice_pull,
     ),
 )

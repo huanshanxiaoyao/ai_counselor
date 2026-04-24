@@ -32,6 +32,7 @@ from .services.session_service import (
     destroy_summary,
     end_session,
     get_persona_catalog,
+    get_persona_config,
     get_session_or_404,
     save_summary,
     serialize_session,
@@ -155,6 +156,7 @@ class MoodPalSessionView(View):
             'moodpal/session.html',
             {
                 'session': session,
+                'persona': get_persona_config(session.persona_id),
                 'session_json': json.dumps(session_payload, ensure_ascii=False),
                 'messages': list_serialized_messages(session),
                 'selected_model_label': session_payload['selected_model_label'],

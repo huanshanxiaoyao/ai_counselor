@@ -62,6 +62,10 @@ def destroy_raw_messages(session: MoodPalSession) -> int:
     destroyed_at = timezone.now().isoformat()
     metadata = dict(session.metadata or {})
     metadata.pop('cbt_state', None)
+    metadata.pop('humanistic_state', None)
+    metadata.pop('psychoanalysis_state', None)
+    metadata.pop('pattern_memory_candidate', None)
+    metadata.pop('last_summary', None)
     metadata['raw_messages_destroyed_at'] = destroyed_at
     metadata['raw_messages_destroyed_count'] = raw_message_count
     session.metadata = metadata
@@ -73,7 +77,7 @@ def destroy_raw_messages(session: MoodPalSession) -> int:
         metadata={'raw_message_count': raw_message_count},
     )
     logger.info(
-        'MoodPal raw messages destroyed session=%s raw_messages=%s cbt_state_cleared=%s',
+        'MoodPal raw messages destroyed session=%s raw_messages=%s runtime_states_cleared=%s',
         session.id,
         raw_message_count,
         True,

@@ -104,7 +104,35 @@ def test_humanistic_resonance_evaluator_trips_on_stall_limit():
     assert result.done is False
     assert result.should_trip_circuit is True
     assert result.trip_reason == 'attempt_limit_reached'
-    assert result.next_fallback_action == 'wrap_up_now'
+    assert result.next_fallback_action == 'regress_to_holding'
+
+
+def test_humanistic_accepting_done_switches_same_phase_instead_of_wrapping_up():
+    evaluator = HumanisticResonanceEvaluator()
+    state = make_initial_humanistic_state()
+    state['self_attack_flag'] = False
+    state['self_compassion_shift'] = '允许自己先不要这么狠地责怪自己'
+
+    result = evaluator.evaluate(state, 'hum_unconditional_regard')
+
+    assert result.done is True
+    assert result.next_fallback_action == 'switch_same_phase'
+
+
+def test_humanistic_alliance_repair_trip_regresses_to_holding():
+    evaluator = HumanisticResonanceEvaluator()
+    state = make_initial_humanistic_state()
+    state['alliance_rupture_detected'] = True
+    state['relational_trust'] = 'weak'
+    state['technique_attempt_count'] = 2
+    state['technique_stall_count'] = 0
+    state['last_progress_marker'] = 'alliance_repair_in_progress'
+
+    result = evaluator.evaluate(state, 'hum_exception_alliance_repair')
+
+    assert result.done is False
+    assert result.should_trip_circuit is True
+    assert result.next_fallback_action == 'regress_to_holding'
 
 
 def test_humanistic_graph_builds_execution_payload_for_repair_node():
@@ -248,6 +276,136 @@ def test_run_humanistic_turn_logs_local_fallback_application(caplog):
     assert 'MoodPal Humanistic route selected' in caplog.text
     assert 'MoodPal Humanistic local fallback applied' in caplog.text
     assert 'MoodPal Humanistic trace appended' in caplog.text
+
+
+@pytest.mark.django_db
+def test_run_humanistic_turn_fallback_does_not_fake_repair_completion():
+    session = MoodPalSession.objects.create(
+        usage_subject='anon:humanistic-fallback-acceptance',
+        anon_id='humanistic-fallback-acceptance',
+        persona_id=MoodPalSession.Persona.EMPATHY_SISTER,
+        status=MoodPalSession.Status.ACTIVE,
+    )
+    history_messages = [
+        {'role': 'user', 'content': '你根本没懂我。'},
+    ]
+
+    with patch('backend.moodpal.services.humanistic_runtime_service.LLMClient.complete_with_metadata', side_effect=RuntimeError('boom')):
+        result = run_humanistic_turn(session=session, history_messages=history_messages)
+
+    assert result.used_fallback is True
+    assert result.reply_metadata['technique_id'] == 'hum_exception_alliance_repair'
+    assert result.state['current_stage'] == 'execute_technique'
+    assert result.state['alliance_rupture_detected'] is True
+    assert result.state['relational_trust'] == 'weak'
+    assert result.state['technique_attempt_count'] == 1
+    assert result.state['technique_stall_count'] == 1
+    assert result.state['circuit_breaker_open'] is False
+    assert result.state['next_fallback_action'] == 'retry_same_technique'
+
+
+@pytest.mark.django_db
+def test_run_humanistic_turn_fallback_applies_safe_accepting_state_patch():
+    session = MoodPalSession.objects.create(
+        usage_subject='anon:humanistic-fallback-accepting',
+        anon_id='humanistic-fallback-accepting',
+        persona_id=MoodPalSession.Persona.EMPATHY_SISTER,
+        status=MoodPalSession.Status.ACTIVE,
+        metadata={
+            'humanistic_state': {
+                'self_attack_flag': True,
+                'emotional_intensity': 6,
+            }
+        },
+    )
+    history_messages = [
+        {'role': 'assistant', 'content': '听起来你对自己很苛刻。'},
+        {'role': 'user', 'content': '是的。'},
+    ]
+
+    with patch('backend.moodpal.services.humanistic_runtime_service.LLMClient.complete_with_metadata', side_effect=RuntimeError('boom')):
+        result = run_humanistic_turn(session=session, history_messages=history_messages)
+
+    assert result.used_fallback is True
+    assert result.reply_metadata['technique_id'] == 'hum_unconditional_regard'
+    assert result.state['self_compassion_shift'] == '允许自己先不要这么狠地责怪自己'
+    assert result.state['current_stage'] == 'execute_technique'
+
+
+@pytest.mark.django_db
+def test_run_humanistic_turn_does_not_preflight_being_understood_into_done():
+    session = MoodPalSession.objects.create(
+        usage_subject='anon:humanistic-understood-preflight',
+        anon_id='humanistic-understood-preflight',
+        persona_id=MoodPalSession.Persona.EMPATHY_SISTER,
+        status=MoodPalSession.Status.ACTIVE,
+    )
+    history_messages = [
+        {'role': 'user', 'content': '你懂我'},
+    ]
+    llm_result = SimpleNamespace(
+        text=json.dumps(
+            {
+                'reply': '我先在这里陪着你。你想先从哪一点继续说起？',
+                'state_patch': {},
+            },
+            ensure_ascii=False,
+        ),
+        usage=SimpleNamespace(prompt_tokens=2, completion_tokens=3, total_tokens=5),
+        model='fake-humanistic-model',
+    )
+
+    with patch('backend.moodpal.services.humanistic_runtime_service.LLMClient.complete_with_metadata', return_value=llm_result):
+        result = run_humanistic_turn(session=session, history_messages=history_messages)
+
+    assert result.reply_metadata['technique_id'] == 'hum_reflect_feeling'
+    assert result.state['being_understood_signal'] is False
+    assert result.state['current_stage'] == 'execute_technique'
+
+
+@pytest.mark.django_db
+def test_run_humanistic_turn_preserves_body_focus_state_on_brief_acknowledgement():
+    session = MoodPalSession.objects.create(
+        usage_subject='anon:humanistic-brief-followup',
+        anon_id='humanistic-brief-followup',
+        persona_id=MoodPalSession.Persona.EMPATHY_SISTER,
+        status=MoodPalSession.Status.ACTIVE,
+        metadata={
+            'humanistic_state': {
+                'current_phase': 'body_focusing',
+                'current_technique_id': 'hum_body_focus',
+                'body_signal_present': True,
+                'body_focus_ready': True,
+                'emotional_clarity': 'diffuse',
+                'felt_sense_description': '胸口堵着',
+                'emotional_intensity': 6,
+            }
+        },
+    )
+    history_messages = [
+        {'role': 'assistant', 'content': '我们先不急着解释，只看看那份堵是怎样的。'},
+        {'role': 'user', 'content': '嗯'},
+    ]
+    llm_result = SimpleNamespace(
+        text=json.dumps(
+            {
+                'reply': '你刚刚这个“嗯”像是在继续贴近那份堵。它现在更像压着，还是更像发空？',
+                'state_patch': {
+                    'felt_sense_description': '胸口堵着但松了一点',
+                },
+            },
+            ensure_ascii=False,
+        ),
+        usage=SimpleNamespace(prompt_tokens=2, completion_tokens=3, total_tokens=5),
+        model='fake-humanistic-model',
+    )
+
+    with patch('backend.moodpal.services.humanistic_runtime_service.LLMClient.complete_with_metadata', return_value=llm_result):
+        result = run_humanistic_turn(session=session, history_messages=history_messages)
+
+    assert result.reply_metadata['technique_id'] == 'hum_body_focus'
+    assert result.state['body_signal_present'] is True
+    assert result.state['current_phase'] == 'body_focusing'
 
 
 @pytest.mark.django_db

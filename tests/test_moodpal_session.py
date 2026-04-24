@@ -130,6 +130,38 @@ def test_moodpal_session_start_api_persists_selected_model_and_returns_quota():
 
 
 @pytest.mark.django_db
+def test_moodpal_session_start_api_loads_recent_saved_summary_context():
+    client = _anon_client('anon-start-api-history')
+    previous = MoodPalSession.objects.create(
+        usage_subject='anon:anon-start-api-history',
+        anon_id='anon-start-api-history',
+        persona_id=MoodPalSession.Persona.EMPATHY_SISTER,
+        status=MoodPalSession.Status.CLOSED,
+        summary_action=MoodPalSession.SummaryAction.SAVED,
+        summary_final='上次你提到，最近最难的是总觉得自己不被理解。',
+        metadata={'summary_saved_at': timezone.now().isoformat()},
+    )
+
+    resp = client.post(
+        '/api/moodpal/session/start',
+        data=json.dumps(
+            {
+                'persona_id': MoodPalSession.Persona.INSIGHT_MENTOR,
+                'privacy_acknowledged': True,
+            }
+        ),
+        content_type='application/json',
+    )
+
+    assert resp.status_code == 201
+    session = MoodPalSession.objects.exclude(pk=previous.pk).get()
+    last_summary = session.metadata['last_summary']
+    assert last_summary['source_session_id'] == str(previous.id)
+    assert last_summary['source_persona_id'] == MoodPalSession.Persona.EMPATHY_SISTER
+    assert last_summary['summary_text'] == '上次你提到，最近最难的是总觉得自己不被理解。'
+
+
+@pytest.mark.django_db
 def test_moodpal_session_start_api_blocks_when_quota_exceeded():
     client = _anon_client('anon-start-api-quota')
     TokenQuotaState.objects.create(
@@ -211,6 +243,52 @@ def test_moodpal_session_detail_api_exposes_debug_state_in_debug_mode():
     assert debug_payload['current_track'] == 'cognitive_evaluation'
     assert debug_payload['current_technique_id'] == 'cbt_cog_eval_socratic'
     assert debug_payload['trace_length'] == 1
+
+
+@pytest.mark.django_db
+@override_settings(DEBUG=True)
+def test_moodpal_session_detail_api_exposes_psychoanalysis_debug_context():
+    client = _anon_client('anon-debug-psychoanalysis')
+    source_session_id = '11111111-2222-3333-4444-555555555555'
+    session = MoodPalSession.objects.create(
+        usage_subject='anon:anon-debug-psychoanalysis',
+        anon_id='anon-debug-psychoanalysis',
+        persona_id=MoodPalSession.Persona.INSIGHT_MENTOR,
+        status=MoodPalSession.Status.ACTIVE,
+        metadata={
+            'last_summary': {
+                'source_session_id': source_session_id,
+                'source_persona_id': MoodPalSession.Persona.EMPATHY_SISTER,
+                'summary_text': '上次你提到，一感觉自己不被理解，就会很快把话收回去。',
+            },
+            'psychoanalysis_state': {
+                'current_stage': 'evaluate_insight',
+                'current_phase': 'pattern_linking',
+                'current_technique_id': 'psa_pattern_linking',
+                'next_fallback_action': 'switch_same_phase',
+                'circuit_breaker_open': False,
+                'last_route_reason': 'repetition_pattern_candidate_detected',
+                'recalled_pattern_memory_count': 1,
+                'recalled_pattern_memory_preview': [
+                    {
+                        'repetition_themes': ['hiding_to_avoid_evaluation'],
+                        'working_hypotheses': ['感觉会被看见时容易往后缩'],
+                    }
+                ],
+            },
+        },
+    )
+
+    resp = client.get(f'/api/moodpal/session/{session.id}')
+
+    assert resp.status_code == 200
+    debug_payload = resp.json()['session']['debug']
+    assert debug_payload['engine'] == 'psychoanalysis_graph'
+    assert debug_payload['last_route_reason'] == 'repetition_pattern_candidate_detected'
+    assert debug_payload['last_summary_available'] is True
+    assert debug_payload['last_summary_source_session_id'] == source_session_id
+    assert debug_payload['recalled_pattern_memory_count'] == 1
+    assert debug_payload['recalled_pattern_memory_preview'][0]['repetition_themes'] == ['hiding_to_avoid_evaluation']
 
 
 @pytest.mark.django_db
@@ -658,7 +736,7 @@ def test_moodpal_empathy_persona_uses_humanistic_runtime():
 
 
 @pytest.mark.django_db
-def test_moodpal_insight_persona_keeps_placeholder_reply():
+def test_moodpal_insight_persona_uses_psychoanalysis_runtime():
     client = _anon_client('anon-insight-placeholder')
     session = MoodPalSession.objects.create(
         usage_subject='anon:anon-insight-placeholder',
@@ -666,16 +744,118 @@ def test_moodpal_insight_persona_keeps_placeholder_reply():
         persona_id=MoodPalSession.Persona.INSIGHT_MENTOR,
         status=MoodPalSession.Status.ACTIVE,
     )
-
-    resp = client.post(
-        f'/api/moodpal/session/{session.id}/message',
-        data=json.dumps({'content': '这种感觉以前总是在类似场景里冒出来。'}),
-        content_type='application/json',
+    llm_result = SimpleNamespace(
+        text=json.dumps(
+            {
+                'reply': '这句话里有一个值得慢慢看的“又”。先不急着解释它，我们可以从最近一次相似场景开始，看看它通常在什么关系里被触发。',
+                'state_patch': {
+                    'association_openness': 'partial',
+                    'repetition_theme_candidate': 'repetition_pattern_present',
+                    'pattern_confidence': 0.72,
+                    'working_hypothesis': '某种相似关系场景会反复触发旧感受。',
+                },
+            },
+            ensure_ascii=False,
+        ),
+        usage=SimpleNamespace(prompt_tokens=4, completion_tokens=6, total_tokens=10),
+        model='fake-psychoanalysis-model',
     )
+
+    with patch('backend.moodpal.services.psychoanalysis_runtime_service.LLMClient.complete_with_metadata', return_value=llm_result):
+        resp = client.post(
+            f'/api/moodpal/session/{session.id}/message',
+            data=json.dumps({'content': '这种感觉以前总是在类似场景里冒出来。'}),
+            content_type='application/json',
+        )
 
     assert resp.status_code == 201
     assistant_message = MoodPalMessage.objects.filter(session=session, role=MoodPalMessage.Role.ASSISTANT).latest('id')
-    assert assistant_message.metadata['engine'] == 'placeholder'
+    assert assistant_message.metadata['engine'] == 'psychoanalysis_graph'
+    assert assistant_message.metadata['technique_id']
+    assert assistant_message.metadata['fallback_used'] is False
+    session.refresh_from_db()
+    assert session.metadata['psychoanalysis_state']['working_hypothesis'] == '某种相似关系场景会反复触发旧感受。'
+
+
+@pytest.mark.django_db
+@override_settings(DEBUG=True)
+def test_moodpal_psychoanalysis_cross_session_history_reaches_runtime_prompt():
+    client = _anon_client('anon-psychoanalysis-history')
+    previous = MoodPalSession.objects.create(
+        usage_subject='anon:anon-psychoanalysis-history',
+        anon_id='anon-psychoanalysis-history',
+        persona_id=MoodPalSession.Persona.INSIGHT_MENTOR,
+        status=MoodPalSession.Status.CLOSED,
+        summary_action=MoodPalSession.SummaryAction.SAVED,
+        summary_final='上次我们已经看到，只要感觉要被评价，你就会先缩回去。',
+        metadata={
+            'summary_saved_at': timezone.now().isoformat(),
+            'psychoanalysis_memory_v1': {
+                'schema_version': 'v1',
+                'repetition_themes': ['authority_tension'],
+                'defense_patterns': ['withdrawal'],
+                'relational_pull': ['testing_authority'],
+                'working_hypotheses': ['在被评价场景里容易先收紧自己'],
+                'confidence': 0.74,
+                'source_session_id': 'prev-session',
+                'updated_at': timezone.now().isoformat(),
+            },
+        },
+    )
+
+    start_resp = client.post(
+        '/api/moodpal/session/start',
+        data=json.dumps(
+            {
+                'persona_id': MoodPalSession.Persona.INSIGHT_MENTOR,
+                'privacy_acknowledged': True,
+            }
+        ),
+        content_type='application/json',
+    )
+    assert start_resp.status_code == 201
+    session_id = start_resp.json()['session']['id']
+    session = MoodPalSession.objects.get(pk=session_id)
+    assert session.metadata['last_summary']['source_session_id'] == str(previous.id)
+
+    llm_result = SimpleNamespace(
+        text=json.dumps(
+            {
+                'reply': '听起来那种熟悉的缩回去又出现了。我们先不急着解释它，只把这条线放在这里看一会儿。',
+                'state_patch': {
+                    'working_hypothesis': '一感觉要被评价，你就会先缩回去保护自己。',
+                    'pattern_confidence': 0.78,
+                },
+            },
+            ensure_ascii=False,
+        ),
+        usage=SimpleNamespace(prompt_tokens=5, completion_tokens=7, total_tokens=12),
+        model='fake-psychoanalysis-model',
+    )
+
+    with patch('backend.moodpal.services.psychoanalysis_runtime_service.LLMClient.complete_with_metadata', return_value=llm_result) as mocked_complete:
+        msg_resp = client.post(
+            f'/api/moodpal/session/{session_id}/message',
+            data=json.dumps({'content': '这周开会时，那种熟悉的感觉又来了。'}),
+            content_type='application/json',
+        )
+
+    assert msg_resp.status_code == 201
+    prompt = mocked_complete.call_args.kwargs['prompt']
+    assert '上次我们已经看到，只要感觉要被评价，你就会先缩回去。' in prompt
+    assert 'themes=authority_tension' in prompt
+
+    session.refresh_from_db()
+    psychoanalysis_state = session.metadata['psychoanalysis_state']
+    assert psychoanalysis_state['recalled_pattern_memory_count'] == 1
+    assert psychoanalysis_state['last_route_reason']
+
+    detail_resp = client.get(f'/api/moodpal/session/{session_id}')
+    assert detail_resp.status_code == 200
+    debug_payload = detail_resp.json()['session']['debug']
+    assert debug_payload['last_summary_available'] is True
+    assert debug_payload['last_summary_source_session_id'] == str(previous.id)
+    assert debug_payload['recalled_pattern_memory_count'] == 1
 
 
 @pytest.mark.django_db
@@ -746,6 +926,89 @@ def test_moodpal_summary_draft_includes_cbt_state_material():
 
 
 @pytest.mark.django_db
+def test_moodpal_summary_draft_includes_psychoanalysis_material():
+    client = _anon_client('anon-psychoanalysis-summary')
+    session = MoodPalSession.objects.create(
+        usage_subject='anon:anon-psychoanalysis-summary',
+        anon_id='anon-psychoanalysis-summary',
+        persona_id=MoodPalSession.Persona.INSIGHT_MENTOR,
+        status=MoodPalSession.Status.ACTIVE,
+        metadata={
+            'psychoanalysis_state': {
+                'focus_theme': '一被别人注意到，我就会想往后缩。',
+                'repetition_theme_candidate': 'hiding_to_avoid_evaluation',
+                'active_defense': 'withdrawal',
+                'relational_pull': 'testing_authority',
+                'working_hypothesis': '你在感觉会被看见时，常会先把自己收回去保护自己。',
+            }
+        },
+    )
+    MoodPalMessage.objects.create(
+        session=session,
+        role=MoodPalMessage.Role.USER,
+        content='我最近发现，只要别人开始注意我，我就会很想退后。',
+    )
+    MoodPalMessage.objects.create(
+        session=session,
+        role=MoodPalMessage.Role.ASSISTANT,
+        content='我们先不急着解释它，只把这条会反复出现的反应轻轻看清一点。',
+    )
+
+    resp = client.post(f'/api/moodpal/session/{session.id}/end')
+    assert resp.status_code == 200
+
+    session.refresh_from_db()
+    assert '这次最值得继续跟住的一条线索：一被别人注意到，我就会想往后缩。' in session.summary_draft
+    assert '当前浮现的重复模式线索：一感觉自己会被看见或被评价，你更容易往后缩' in session.summary_draft
+    assert '对话里出现的一种保护动作：一感觉压力上来就会更想先把自己收回去' in session.summary_draft
+    assert '关系里更容易出现的反应：会先试探对方是不是在判断你、是不是值得信任' in session.summary_draft
+    assert '当前形成的一种工作性理解：你在感觉会被看见时，常会先把自己收回去保护自己。' in session.summary_draft
+    assert '- 下次最想继续跟住的那条线索' in session.summary_draft
+    assert '建议带走的微行动' not in session.summary_draft
+
+
+@pytest.mark.django_db
+def test_moodpal_summary_draft_includes_humanistic_material():
+    client = _anon_client('anon-humanistic-summary')
+    session = MoodPalSession.objects.create(
+        usage_subject='anon:anon-humanistic-summary',
+        anon_id='anon-humanistic-summary',
+        persona_id=MoodPalSession.Persona.EMPATHY_SISTER,
+        status=MoodPalSession.Status.ACTIVE,
+        metadata={
+            'humanistic_state': {
+                'dominant_emotions': ['委屈', '失落'],
+                'felt_sense_description': '胸口有点堵，像有话卡着',
+                'unmet_need_candidate': '想被认真听见，也想被温柔地接住',
+                'self_compassion_shift': '允许自己先不要那么快否定自己',
+            }
+        },
+    )
+    MoodPalMessage.objects.create(
+        session=session,
+        role=MoodPalMessage.Role.USER,
+        content='我其实没有想哭，但就是一直闷着，很想有人真的听我说完。',
+    )
+    MoodPalMessage.objects.create(
+        session=session,
+        role=MoodPalMessage.Role.ASSISTANT,
+        content='我听见你不是想被讲道理，而是想先被完整地听见。',
+    )
+
+    resp = client.post(f'/api/moodpal/session/{session.id}/end')
+    assert resp.status_code == 200
+
+    session.refresh_from_db()
+    assert '这次更清楚被看见的情绪：委屈、失落' in session.summary_draft
+    assert '身体或感受层面冒出来的线索：胸口有点堵，像有话卡着' in session.summary_draft
+    assert '这份情绪背后更在意的需要：想被认真听见，也想被温柔地接住' in session.summary_draft
+    assert '这次慢慢长出来的一点自我允许：允许自己先不要那么快否定自己' in session.summary_draft
+    assert '- 你最希望被怎样理解、被怎样接住' in session.summary_draft
+    assert '建议带走的微行动' not in session.summary_draft
+    assert '行为激活起步动作' not in session.summary_draft
+
+
+@pytest.mark.django_db
 def test_moodpal_summary_save_closes_session_and_burns_raw_messages():
     client = _anon_client('anon-summary-save')
     session = MoodPalSession.objects.create(
@@ -753,6 +1016,7 @@ def test_moodpal_summary_save_closes_session_and_burns_raw_messages():
         anon_id='anon-summary-save',
         persona_id=MoodPalSession.Persona.EMPATHY_SISTER,
         status=MoodPalSession.Status.ACTIVE,
+        metadata={'humanistic_state': {'current_phase': 'empathy_presence'}},
     )
     MoodPalMessage.objects.create(
         session=session,
@@ -780,11 +1044,67 @@ def test_moodpal_summary_save_closes_session_and_burns_raw_messages():
     assert session.summary_final == '编辑后的摘要'
     assert MoodPalMessage.objects.filter(session=session).count() == 0
     assert 'cbt_state' not in session.metadata
+    assert 'humanistic_state' not in session.metadata
 
     event_types = list(session.events.values_list('event_type', flat=True))
     assert MoodPalSessionEvent.EventType.SUMMARY_GENERATED in event_types
     assert MoodPalSessionEvent.EventType.RAW_MESSAGES_DESTROYED in event_types
     assert MoodPalSessionEvent.EventType.SUMMARY_SAVED in event_types
+
+
+@pytest.mark.django_db
+def test_moodpal_summary_save_persists_psychoanalysis_memory_after_user_confirm():
+    client = _anon_client('anon-psychoanalysis-memory-save')
+    session = MoodPalSession.objects.create(
+        usage_subject='anon:anon-psychoanalysis-memory-save',
+        anon_id='anon-psychoanalysis-memory-save',
+        persona_id=MoodPalSession.Persona.INSIGHT_MENTOR,
+        status=MoodPalSession.Status.ACTIVE,
+        metadata={
+            'psychoanalysis_state': {
+                'repetition_theme_candidate': 'hiding_to_avoid_evaluation',
+                'active_defense': 'withdrawal',
+                'relational_pull': 'testing_authority',
+                'pattern_confidence': 0.74,
+                'working_hypothesis': '这句不会被直接写入长期记忆',
+            }
+        },
+    )
+    MoodPalMessage.objects.create(
+        session=session,
+        role=MoodPalMessage.Role.USER,
+        content='我总觉得一被别人注意到，就想往后缩。',
+    )
+    MoodPalMessage.objects.create(
+        session=session,
+        role=MoodPalMessage.Role.ASSISTANT,
+        content='这像是一条会反复出现的保护动作。',
+    )
+
+    end_resp = client.post(f'/api/moodpal/session/{session.id}/end')
+    assert end_resp.status_code == 200
+
+    save_resp = client.post(
+        f'/moodpal/session/{session.id}/summary/',
+        data={'action': 'save', 'summary_text': '保留这份摘要'},
+    )
+    assert save_resp.status_code == 302
+
+    session.refresh_from_db()
+    memory = session.metadata.get('psychoanalysis_memory_v1') or {}
+    assert session.status == MoodPalSession.Status.CLOSED
+    assert session.summary_action == MoodPalSession.SummaryAction.SAVED
+    assert session.summary_final == '保留这份摘要'
+    assert MoodPalMessage.objects.filter(session=session).count() == 0
+    assert 'psychoanalysis_state' not in session.metadata
+    assert memory['schema_version'] == 'v1'
+    assert memory['repetition_themes'] == ['hiding_to_avoid_evaluation']
+    assert memory['defense_patterns'] == ['withdrawal']
+    assert memory['relational_pull'] == ['testing_authority']
+    assert '感觉会被看见或被评价时容易退回去保护自己' in memory['working_hypotheses']
+    assert '这句不会被直接写入长期记忆' not in json.dumps(memory, ensure_ascii=False)
+    assert memory['source_session_id'] == str(session.id)
+    assert memory['confidence'] >= 0.65
 
 
 @pytest.mark.django_db
@@ -821,6 +1141,15 @@ def test_moodpal_destroy_summary_clears_summary_and_burns_raw_messages():
         anon_id='anon-summary-destroy',
         persona_id=MoodPalSession.Persona.INSIGHT_MENTOR,
         status=MoodPalSession.Status.ACTIVE,
+        metadata={
+            'psychoanalysis_state': {
+                'repetition_theme_candidate': 'authority_tension',
+            },
+            'psychoanalysis_memory_v1': {
+                'schema_version': 'v1',
+                'repetition_themes': ['authority_tension'],
+            },
+        },
     )
     MoodPalMessage.objects.create(
         session=session,
@@ -845,6 +1174,8 @@ def test_moodpal_destroy_summary_clears_summary_and_burns_raw_messages():
     assert session.summary_draft == ''
     assert session.summary_final == ''
     assert MoodPalMessage.objects.filter(session=session).count() == 0
+    assert 'psychoanalysis_state' not in session.metadata
+    assert 'psychoanalysis_memory_v1' not in session.metadata
     assert MoodPalSessionEvent.objects.filter(
         session=session,
         event_type=MoodPalSessionEvent.EventType.SUMMARY_DESTROYED,
