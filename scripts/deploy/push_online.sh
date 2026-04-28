@@ -27,4 +27,4 @@ sleep 2
 sudo systemctl status "$SERVICE" --no-pager -l | head -15
 
 echo ""
-echo "✓ 部署完成。访问 https://makebetter.top/roundtable/"
+echo "✓ 部署完成。访问 https://makebetter.top/moodpal/ 或 https://makebetter.top/roundtable/"
