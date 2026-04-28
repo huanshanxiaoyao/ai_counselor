@@ -54,8 +54,10 @@ class CBTGraphState(TypedDict, total=False):
     session_id: str
     subject_key: str
     persona_id: str
+    surface_persona_id: str
     therapy_mode: Literal['cbt']
     selected_model: str
+    support_directive: str
 
     session_phase: Literal['starting', 'active', 'ending', 'summary_pending', 'closed']
     current_stage: Literal[
@@ -154,8 +156,10 @@ def make_initial_cbt_state(
         session_id=session_id,
         subject_key=subject_key,
         persona_id=persona_id,
+        surface_persona_id=persona_id,
         therapy_mode='cbt',
         selected_model=selected_model,
+        support_directive='',
         session_phase=session_phase,
         current_stage='session_start',
         current_track='',

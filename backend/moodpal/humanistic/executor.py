@@ -11,6 +11,8 @@ from ..runtime.types import ExecutionPayload
 
 
 def _persona_style(persona_id: str) -> str:
+    if persona_id == 'master_guide':
+        return '角色语气：像沉稳、灵活、可靠的全能主理人，这一轮先以承接和关系修复为主。'
     if persona_id == 'empathy_sister':
         return '角色语气：像温暖、稳、慢节奏、有边界感的知心学姐。'
     if persona_id == 'logic_brother':
@@ -18,6 +20,17 @@ def _persona_style(persona_id: str) -> str:
     if persona_id == 'insight_mentor':
         return '角色语气：自然、稳重，但此轮避免深挖式追问。'
     return '角色语气：自然、温和、不过度表演。'
+
+
+def _support_directive_lines(state: HumanisticGraphState) -> list[str]:
+    directive = str(state.get('support_directive', '') or '').strip()
+    if directive == 'opening_hold':
+        return ['支撑约束：这是开场承接回合，先让用户感到被接住，不急着往下推。']
+    if directive == 'repair_softened':
+        return ['支撑约束：这是修复回合，先恢复关系安全感，不急着给方法。']
+    if directive == 'soft_handoff':
+        return ['支撑约束：这是切轨前后的柔性过渡，先承接，再把焦点轻轻带稳。']
+    return []
 
 
 class HumanisticTechniqueExecutor(TechniqueExecutor[HumanisticGraphState]):
@@ -35,7 +48,8 @@ class HumanisticTechniqueExecutor(TechniqueExecutor[HumanisticGraphState]):
 
         system_prompt = '\n'.join(
             [
-                _persona_style(state.get('persona_id', '')),
+                _persona_style(state.get('surface_persona_id') or state.get('persona_id', '')),
+                *_support_directive_lines(state),
                 '工作约束：一次只推进一个关系动作，不说教，不诊断，不提前切到别的技术。',
                 '语言约束：尽量避免“为什么”，多用陪伴式、低压迫、可停顿的表达。',
                 '输出要求：只输出一轮对用户可见的自然中文回复，不暴露后台状态机。',

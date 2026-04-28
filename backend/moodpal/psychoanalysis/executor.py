@@ -11,6 +11,8 @@ from ..runtime.types import ExecutionPayload
 
 
 def _persona_style(persona_id: str) -> str:
+    if persona_id == 'master_guide':
+        return '角色语气：像沉稳、灵活、可靠的全能主理人，用观察和假设性的方式陪用户慢慢看见重复模式。'
     if persona_id == 'insight_mentor':
         return '角色语气：像稳重、慢节奏、善于看见重复模式的心理学前辈。'
     if persona_id == 'empathy_sister':
@@ -18,6 +20,17 @@ def _persona_style(persona_id: str) -> str:
     if persona_id == 'logic_brother':
         return '角色语气：自然、清晰，但此轮以探索式、假设性表达为主。'
     return '角色语气：自然、稳、不过度表演。'
+
+
+def _support_directive_lines(state: PsychoanalysisGraphState) -> list[str]:
+    directive = str(state.get('support_directive', '') or '').strip()
+    if directive == 'repair_softened':
+        return ['支撑约束：这一轮即使进入探索，也要保持修复后的低压迫和安全感。']
+    if directive == 'soft_handoff':
+        return ['支撑约束：这一轮先用一句柔和承接，再进入模式探索，不要显得突然深挖。']
+    if directive == 'gentle_focus':
+        return ['支撑约束：保持被接住的感觉，但主干要明确落在模式观察上。']
+    return []
 
 
 class PsychoanalysisTechniqueExecutor(TechniqueExecutor[PsychoanalysisGraphState]):
@@ -36,7 +49,8 @@ class PsychoanalysisTechniqueExecutor(TechniqueExecutor[PsychoanalysisGraphState
 
         system_prompt = '\n'.join(
             [
-                _persona_style(state.get('persona_id', '')),
+                _persona_style(state.get('surface_persona_id') or state.get('persona_id', '')),
+                *_support_directive_lines(state),
                 '工作约束：一次只推进一个分析动作，不连续深挖。',
                 '语言约束：多用观察、好奇和假设性表达，避免武断解释。',
                 '边界约束：不诊断，不说教，不主动追到童年或创伤根源。',

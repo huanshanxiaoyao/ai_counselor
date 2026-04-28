@@ -11,6 +11,8 @@ from ..runtime.types import ExecutionPayload
 
 
 def _persona_style(persona_id: str) -> str:
+    if persona_id == 'master_guide':
+        return '角色语气：像沉稳、灵活、可靠的全能主理人，先接住情绪，再温和地把问题理清。'
     if persona_id == 'logic_brother':
         return '角色语气：像逻辑清晰、可靠、不说教的邻家哥哥。'
     if persona_id == 'empathy_sister':
@@ -18,6 +20,17 @@ def _persona_style(persona_id: str) -> str:
     if persona_id == 'insight_mentor':
         return '角色语气：像稳重、善于追问模式的心理学前辈。'
     return '角色语气：自然、稳定、不过度表演。'
+
+
+def _support_directive_lines(state: CBTGraphState) -> list[str]:
+    directive = str(state.get('support_directive', '') or '').strip()
+    if directive == 'repair_softened':
+        return ['支撑约束：这一轮先放低推进力度，保持修复后的温和衔接。']
+    if directive == 'soft_handoff':
+        return ['支撑约束：这一轮先用一句柔和承接，再进入问题拆解，不要显得像突然换了个人。']
+    if directive == 'gentle_focus':
+        return ['支撑约束：保持被接住的感觉，但主干仍要清楚落在现实问题推进上。']
+    return []
 
 
 class CBTTechniqueExecutor(TechniqueExecutor[CBTGraphState]):
@@ -34,7 +47,8 @@ class CBTTechniqueExecutor(TechniqueExecutor[CBTGraphState]):
 
         system_prompt = '\n'.join(
             [
-                _persona_style(state.get('persona_id', '')),
+                _persona_style(state.get('surface_persona_id') or state.get('persona_id', '')),
+                *_support_directive_lines(state),
                 '治疗约束：一次只推进一步，不说教，不提前跳到下一个技术。',
                 '输出要求：只输出一轮对用户可见的自然中文回复，不暴露后台状态机。',
                 '本节点目标：' + template.objective,

@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import json
 import logging
 from dataclasses import dataclass, field
 from typing import Optional
@@ -15,6 +14,7 @@ from ..psychoanalysis.pattern_memory import load_recent_pattern_memory
 from ..psychoanalysis.signal_extractor import extract_psychoanalysis_turn_signals
 from ..psychoanalysis.state import PsychoanalysisGraphState, build_psychoanalysis_state_from_session
 from .model_option_service import normalize_selected_model
+from .runtime_completion_service import complete_runtime_structured_turn
 
 
 logger = logging.getLogger(__name__)
@@ -106,8 +106,8 @@ class PsychoanalysisRuntimeTurnResult:
     used_fallback: bool = False
 
 
-def run_psychoanalysis_turn(*, session, history_messages: list[dict]) -> PsychoanalysisRuntimeTurnResult:
-    state = _load_state(session=session, history_messages=history_messages)
+def run_psychoanalysis_turn(*, session, history_messages: list[dict], state_overrides: dict | None = None) -> PsychoanalysisRuntimeTurnResult:
+    state = _load_state(session=session, history_messages=history_messages, state_overrides=state_overrides)
     graph = PsychoanalysisGraph()
     plan = graph.plan_turn(state)
     logger.info(
@@ -146,8 +146,11 @@ def run_psychoanalysis_turn(*, session, history_messages: list[dict]) -> Psychoa
                 'technique_id': '',
                 'reason': plan.selection.reason,
                 'fallback_used': True,
+                'fallback_kind': 'safety_override',
                 'provider': '',
                 'model': '',
+                'json_mode_degraded': False,
+                'completion_mode': 'rule_fallback',
             },
             state=next_state,
             persist_patch=_build_persistable_state_patch(state, next_state),
@@ -225,9 +228,13 @@ def run_psychoanalysis_turn(*, session, history_messages: list[dict]) -> Psychoa
             'reason': plan.selection.reason,
             'fallback_action': evaluation.next_fallback_action,
             'fallback_used': used_fallback,
+            'fallback_kind': 'llm_local_rule' if used_fallback else '',
             'provider': llm_meta.get('provider', ''),
             'model': llm_meta.get('model', ''),
             'usage': llm_meta.get('usage', {}),
+            'json_mode_degraded': bool(llm_meta.get('json_mode_degraded')),
+            'completion_mode': llm_meta.get('completion_mode', ''),
+            'llm_error_type': llm_meta.get('error_type', ''),
         },
         state=next_state,
         persist_patch=_build_persistable_state_patch(state, next_state),
@@ -235,7 +242,7 @@ def run_psychoanalysis_turn(*, session, history_messages: list[dict]) -> Psychoa
     )
 
 
-def _load_state(*, session, history_messages: list[dict]) -> PsychoanalysisGraphState:
+def _load_state(*, session, history_messages: list[dict], state_overrides: dict | None = None) -> PsychoanalysisGraphState:
     metadata = dict(session.metadata or {})
     persisted_state = dict(metadata.get('psychoanalysis_state') or {})
     last_summary = metadata.get('last_summary') or {}
@@ -252,7 +259,9 @@ def _load_state(*, session, history_messages: list[dict]) -> PsychoanalysisGraph
     state['session_id'] = str(session.id)
     state['subject_key'] = session.usage_subject
     state['persona_id'] = session.persona_id
+    state['surface_persona_id'] = session.persona_id
     state['selected_model'] = session.selected_model
+    state['support_directive'] = ''
     state['session_phase'] = session.status
     state['recalled_pattern_memory'] = recalled_pattern_memory
     state['recalled_pattern_memory_count'] = len(recalled_pattern_memory)
@@ -266,6 +275,10 @@ def _load_state(*, session, history_messages: list[dict]) -> PsychoanalysisGraph
         state.update(_sanitize_state_patch(inferred_patch))
     if history_messages:
         state['current_stage'] = 'determine_phase'
+    if isinstance(state_overrides, dict):
+        for key in ('persona_id', 'surface_persona_id', 'support_directive'):
+            if key in state_overrides:
+                state[key] = state_overrides[key]
     return state
 
 
@@ -416,14 +429,15 @@ def _execute_turn(*, session, state: PsychoanalysisGraphState, technique_id: str
     provider_name, model_name = _resolve_provider_and_model(session.selected_model)
     schema_prompt = '\n'.join([user_prompt, '', TURN_RESPONSE_SCHEMA_PROMPT])
     try:
-        client = LLMClient(provider_name=provider_name)
-        result = client.complete_with_metadata(
+        structured = complete_runtime_structured_turn(
+            provider_name=provider_name,
+            model_name=model_name,
             prompt=schema_prompt,
             system_prompt=system_prompt,
-            model=model_name or None,
-            json_mode=True,
+            client_factory=LLMClient,
         )
-        payload = json.loads(result.text or '{}')
+        result = structured.completion
+        payload = structured.payload
         reply_text = (payload.get('reply') or '').strip()
         if not reply_text:
             raise ValueError('empty_reply')
@@ -447,14 +461,22 @@ def _execute_turn(*, session, state: PsychoanalysisGraphState, technique_id: str
             'provider': provider_name,
             'model': result.model,
             'usage': usage,
+            'json_mode_degraded': structured.json_mode_degraded,
+            'completion_mode': structured.completion_mode,
+            'json_mode_attempted': structured.json_mode_attempted,
+            'structured_output_policy': structured.structured_output_policy,
+            'max_tokens': structured.max_tokens,
         }, False
-    except Exception:
+    except Exception as exc:
         logger.exception('MoodPal Psychoanalysis turn failed, using local fallback')
         fallback = _build_local_fallback(state=state, technique_id=technique_id, fallback_reply=fallback_reply)
         return fallback['reply'], fallback.get('state_patch') or {}, {
             'provider': provider_name,
             'model': model_name or '',
             'usage': {'prompt_tokens': 0, 'completion_tokens': 0, 'total_tokens': 0},
+            'json_mode_degraded': False,
+            'completion_mode': 'rule_fallback',
+            'error_type': exc.__class__.__name__,
         }, True
 
 
