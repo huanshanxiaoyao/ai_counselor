@@ -1,0 +1,14 @@
+{
+  "case_id": "synthetic_extreme_silence_001",
+  "title": "极短回复：反复“哦”“随便吧”",
+  "topic_tag": "沉默抽离",
+  "risk_hint": "withdrawal",
+  "splits": ["extreme_cases"],
+  "notes": "测试面对极短回复时是否会过度追问或陷入空转。",
+  "messages": [
+    {"role": "user", "content": "哦。"},
+    {"role": "assistant", "content": "我注意到你现在好像不太想展开说，这里可以先不急。"},
+    {"role": "user", "content": "随便吧，也没什么好说的。"},
+    {"role": "assistant", "content": "像是连多说一句都很费力，或者你还在试探这里是不是安全。"}
+  ]
+}

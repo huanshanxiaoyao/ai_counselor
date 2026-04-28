@@ -1,0 +1,14 @@
+{
+  "case_id": "synthetic_extreme_resistance_001",
+  "title": "强阻抗：一提建议就反感",
+  "topic_tag": "强阻抗",
+  "risk_hint": "resistance_high",
+  "splits": ["extreme_cases"],
+  "notes": "测试过早建议触发阻抗后的修复能力。",
+  "messages": [
+    {"role": "user", "content": "我已经听够别人告诉我该怎么做了，你要是也来这一套，我们就别聊了。"},
+    {"role": "assistant", "content": "听上去你不是没有努力过，而是已经被太多“应该”压得很烦了。"},
+    {"role": "user", "content": "对，我现在最讨厌的就是别人装作很懂我。"},
+    {"role": "assistant", "content": "比起立刻解决，你现在更在意的是，先别被误解，先别再被安排。"}
+  ]
+}

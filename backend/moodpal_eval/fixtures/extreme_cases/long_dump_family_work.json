@@ -1,0 +1,14 @@
+{
+  "case_id": "synthetic_extreme_longdump_001",
+  "title": "长文倾泻：家庭与工作压力混杂",
+  "topic_tag": "长篇倾泻",
+  "risk_hint": "high_density_context",
+  "splits": ["extreme_cases"],
+  "notes": "测试高信息密度输入时的抓重点能力。",
+  "messages": [
+    {"role": "user", "content": "我最近真的快撑不住了，白天在公司要被领导追着问结果，回家我妈又要问我为什么还不结婚，我弟弟欠的钱最后还是我在补，我男朋友表面上说支持我，但只要我一哭他就说我情绪太多。我现在感觉自己像一个到处堵漏洞的人，谁都能从我这里拿东西，可没有人真的问我一句你还好吗。"},
+    {"role": "assistant", "content": "这一大串里几乎每一段都在向你索取，难怪你会像在不停堵洞，却没有地方真正放下自己。"},
+    {"role": "user", "content": "对，我都不知道该先解决哪一块。"},
+    {"role": "assistant", "content": "你不是没有问题意识，而是已经被太多问题同时压上来了。"}
+  ]
+}

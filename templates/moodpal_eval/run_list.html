@@ -1,0 +1,84 @@
+{% extends 'moodpal_eval/base.html' %}
+
+{% block title %}MoodPal Eval Sandbox{% endblock %}
+
+{% block content %}
+<div class="hero">
+    <h1>MoodPal Eval Sandbox</h1>
+    <p>内部评测后台。用于触发角色回归、查看 transcript、评分和 gate 结果。</p>
+    <ul class="inline-list">
+        <li>
+            {% if has_running_run %}
+                <span class="badge warn">当前有运行中的 Run</span>
+            {% else %}
+                <span class="badge good">当前无运行中的 Run</span>
+            {% endif %}
+        </li>
+        <li><span class="badge neutral">单次最多 20 个 Case</span></li>
+        <li><span class="badge neutral">总分门槛默认 80</span></li>
+    </ul>
+</div>
+
+<div class="panel">
+    <div style="display:flex;justify-content:space-between;align-items:center;gap:12px;margin-bottom:14px;">
+        <h2 class="section-title" style="margin:0;">最近 Runs</h2>
+        <a class="button button-primary" href="{% url 'moodpal_eval:run_create' %}">创建新 Run</a>
+    </div>
+    <div class="table-wrap">
+        <table>
+            <thead>
+                <tr>
+                    <th>Run</th>
+                    <th>模式 / 角色</th>
+                    <th>状态</th>
+                    <th>平均分</th>
+                    <th>通过率</th>
+                    <th>Gate</th>
+                    <th>创建时间</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for run in runs %}
+                    <tr>
+                        <td>
+                            <div><a href="{% url 'moodpal_eval:run_detail' run.id %}">{{ run.name|default:run.id }}</a></div>
+                            <div class="muted">{{ run.selected_case_count }} cases</div>
+                        </td>
+                        <td>
+                            <div>{{ run.get_target_mode_display }}</div>
+                            <div class="muted">{{ run.get_target_persona_id_display }}</div>
+                        </td>
+                        <td>
+                            {% if run.status == 'completed' %}
+                                <span class="badge good">已完成</span>
+                            {% elif run.status == 'running' %}
+                                <span class="badge warn">执行中</span>
+                            {% elif run.status == 'failed' %}
+                                <span class="badge bad">失败</span>
+                            {% else %}
+                                <span class="badge neutral">{{ run.get_status_display }}</span>
+                            {% endif %}
+                        </td>
+                        <td>{{ run.summary_metrics.overall_avg_score|default:'-' }}</td>
+                        <td>{{ run.summary_metrics.pass_rate|default:'-' }}{% if run.summary_metrics.pass_rate or run.summary_metrics.pass_rate == 0 %}%{% endif %}</td>
+                        <td>
+                            {% if run.gate_passed is True %}
+                                <span class="badge good">通过</span>
+                            {% elif run.gate_passed is False %}
+                                <span class="badge bad">未通过</span>
+                            {% else %}
+                                <span class="badge neutral">待定</span>
+                            {% endif %}
+                        </td>
+                        <td>{{ run.created_at|date:'Y-m-d H:i:s' }}</td>
+                    </tr>
+                {% empty %}
+                    <tr>
+                        <td colspan="7" class="muted">还没有 Run。</td>
+                    </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+{% endblock %}

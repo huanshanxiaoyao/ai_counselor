@@ -1,0 +1,255 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>{% block title %}MoodPal Eval Sandbox{% endblock %}</title>
+    {% if auto_refresh_seconds %}<meta http-equiv="refresh" content="{{ auto_refresh_seconds }}">{% endif %}
+    <style>
+        :root {
+            --bg: #f4f1ea;
+            --panel: #fffdf8;
+            --line: #ddd3c1;
+            --text: #1e1a16;
+            --muted: #6f6559;
+            --accent: #8f4f2a;
+            --accent-soft: #f3e3d6;
+            --good: #2f6f4f;
+            --good-soft: #e2f0e7;
+            --bad: #9b3d31;
+            --bad-soft: #f7e1dc;
+            --warn: #8a6412;
+            --warn-soft: #f7ebc9;
+            --shadow: 0 12px 30px rgba(42, 31, 19, 0.08);
+        }
+        * { box-sizing: border-box; }
+        body {
+            margin: 0;
+            font-family: "SF Pro SC", "PingFang SC", "Noto Sans SC", sans-serif;
+            background: radial-gradient(circle at top left, #fff7ee 0, var(--bg) 45%, #efe8da 100%);
+            color: var(--text);
+        }
+        a { color: inherit; }
+        .shell {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 28px 20px 64px;
+        }
+        .nav {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 16px;
+            margin-bottom: 24px;
+        }
+        .brand {
+            font-size: 20px;
+            font-weight: 700;
+            text-decoration: none;
+        }
+        .nav-links {
+            display: flex;
+            gap: 10px;
+            flex-wrap: wrap;
+        }
+        .nav-links a,
+        .button,
+        button {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+            border: 1px solid var(--line);
+            background: var(--panel);
+            color: var(--text);
+            padding: 10px 14px;
+            border-radius: 999px;
+            text-decoration: none;
+            cursor: pointer;
+            font: inherit;
+        }
+        .button-primary,
+        button[type="submit"] {
+            background: var(--accent);
+            color: #fff;
+            border-color: var(--accent);
+        }
+        .hero,
+        .panel {
+            background: rgba(255, 253, 248, 0.92);
+            border: 1px solid var(--line);
+            border-radius: 20px;
+            box-shadow: var(--shadow);
+        }
+        .hero {
+            padding: 22px 24px;
+            margin-bottom: 18px;
+        }
+        .hero h1 {
+            margin: 0 0 8px;
+            font-size: 28px;
+        }
+        .hero p,
+        .muted { color: var(--muted); }
+        .panel { padding: 20px; margin-bottom: 18px; }
+        .grid {
+            display: grid;
+            gap: 18px;
+        }
+        .grid.two { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+        .grid.three { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+        .stat {
+            padding: 16px;
+            border: 1px solid var(--line);
+            border-radius: 16px;
+            background: rgba(255,255,255,0.66);
+        }
+        .stat-label { color: var(--muted); font-size: 13px; }
+        .stat-value { font-size: 24px; font-weight: 700; margin-top: 6px; }
+        .badge {
+            display: inline-flex;
+            align-items: center;
+            padding: 4px 10px;
+            border-radius: 999px;
+            font-size: 12px;
+            font-weight: 600;
+            border: 1px solid transparent;
+        }
+        .badge.good { background: var(--good-soft); color: var(--good); border-color: #c8decf; }
+        .badge.bad { background: var(--bad-soft); color: var(--bad); border-color: #ebc7c0; }
+        .badge.warn { background: var(--warn-soft); color: var(--warn); border-color: #ead9a0; }
+        .badge.neutral { background: var(--accent-soft); color: var(--accent); border-color: #ead0bc; }
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 14px;
+        }
+        th, td {
+            text-align: left;
+            padding: 12px 10px;
+            border-bottom: 1px solid var(--line);
+            vertical-align: top;
+        }
+        th { color: var(--muted); font-size: 13px; font-weight: 600; }
+        .table-wrap { overflow-x: auto; }
+        .message-list {
+            list-style: none;
+            padding: 0;
+            margin: 0 0 16px;
+            display: grid;
+            gap: 10px;
+        }
+        .message-list li {
+            padding: 12px 14px;
+            border-radius: 14px;
+            border: 1px solid var(--line);
+            background: rgba(255,255,255,0.78);
+        }
+        .message-success { border-color: #c8decf; background: var(--good-soft); }
+        .message-error { border-color: #ebc7c0; background: var(--bad-soft); }
+        .message-warning { border-color: #ead9a0; background: var(--warn-soft); }
+        form { display: grid; gap: 18px; }
+        .form-grid {
+            display: grid;
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+            gap: 16px;
+        }
+        .field {
+            display: grid;
+            gap: 8px;
+        }
+        .field.full { grid-column: 1 / -1; }
+        label { font-size: 14px; font-weight: 600; }
+        input, select, textarea {
+            width: 100%;
+            border: 1px solid var(--line);
+            border-radius: 14px;
+            padding: 12px 14px;
+            background: #fff;
+            font: inherit;
+            color: var(--text);
+        }
+        .helptext,
+        .errorlist,
+        .field-errors {
+            margin: 0;
+            padding: 0;
+            list-style: none;
+            font-size: 13px;
+        }
+        .errorlist,
+        .field-errors { color: var(--bad); }
+        .code-block {
+            margin: 0;
+            padding: 14px;
+            background: #1d1b19;
+            color: #f8f2e8;
+            border-radius: 16px;
+            overflow-x: auto;
+            white-space: pre-wrap;
+            word-break: break-word;
+            font-size: 13px;
+            line-height: 1.5;
+        }
+        .transcript {
+            display: grid;
+            gap: 12px;
+        }
+        .turn {
+            display: grid;
+            gap: 10px;
+            border: 1px solid var(--line);
+            border-radius: 18px;
+            padding: 14px;
+            background: rgba(255,255,255,0.72);
+        }
+        .bubble {
+            padding: 12px 14px;
+            border-radius: 16px;
+            line-height: 1.6;
+        }
+        .bubble.user { background: #efe5d7; }
+        .bubble.assistant { background: #f7f2ea; }
+        .section-title {
+            margin: 0 0 12px;
+            font-size: 16px;
+        }
+        .inline-list {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 10px;
+            margin: 0;
+            padding: 0;
+            list-style: none;
+        }
+        @media (max-width: 880px) {
+            .grid.two,
+            .grid.three,
+            .form-grid { grid-template-columns: 1fr; }
+            .nav { flex-direction: column; align-items: flex-start; }
+            .shell { padding: 20px 14px 48px; }
+        }
+    </style>
+</head>
+<body>
+    <div class="shell">
+        <div class="nav">
+            <a class="brand" href="{% url 'moodpal_eval:run_list' %}">MoodPal Eval Sandbox</a>
+            <div class="nav-links">
+                <a href="{% url 'moodpal_eval:run_list' %}">Run 列表</a>
+                <a class="button-primary" href="{% url 'moodpal_eval:run_create' %}">新建 Run</a>
+            </div>
+        </div>
+
+        {% if messages %}
+            <ul class="message-list">
+                {% for message in messages %}
+                    <li class="message-{{ message.tags|default:'info' }}">{{ message }}</li>
+                {% endfor %}
+            </ul>
+        {% endif %}
+
+        {% block content %}{% endblock %}
+    </div>
+</body>
+</html>

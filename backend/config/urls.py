@@ -11,6 +11,7 @@ urlpatterns = [
     path('admin/', admin.site.urls),
     path('accounts/signup/', SignupView.as_view(), name='signup'),
     path('accounts/', include('django.contrib.auth.urls')),
+    path('ops/moodpal/evals/', include('backend.moodpal_eval.urls')),
     path('moodpal/', include('backend.moodpal.urls')),
     path('api/moodpal/', include('backend.moodpal.api_urls')),
     path('', include('backend.chat.urls')),

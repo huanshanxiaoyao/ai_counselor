@@ -1,0 +1,190 @@
+{% extends 'moodpal_eval/base.html' %}
+
+{% block title %}{{ run.name|default:run.id }}{% endblock %}
+
+{% block content %}
+<div class="hero">
+    <h1>{{ run.name|default:run.id }}</h1>
+    <p>{{ run.get_target_mode_display }} / {{ run.get_target_persona_id_display }}</p>
+    <ul class="inline-list">
+        <li>
+            {% if run.status == 'completed' %}
+                <span class="badge good">已完成</span>
+            {% elif run.status == 'running' %}
+                <span class="badge warn">执行中</span>
+            {% elif run.status == 'failed' %}
+                <span class="badge bad">失败</span>
+            {% else %}
+                <span class="badge neutral">{{ run.get_status_display }}</span>
+            {% endif %}
+        </li>
+        <li>
+            {% if run.gate_passed is True %}
+                <span class="badge good">Gate 通过</span>
+            {% elif run.gate_passed is False %}
+                <span class="badge bad">Gate 未通过</span>
+            {% else %}
+                <span class="badge neutral">Gate 待定</span>
+            {% endif %}
+        </li>
+        {% if auto_refresh_seconds %}
+            <li><span class="badge warn">页面每 {{ auto_refresh_seconds }} 秒自动刷新</span></li>
+        {% endif %}
+    </ul>
+</div>
+
+<div class="grid three">
+    <div class="stat">
+        <div class="stat-label">平均分</div>
+        <div class="stat-value">{{ summary_metrics.overall_avg_score|default:'-' }}</div>
+    </div>
+    <div class="stat">
+        <div class="stat-label">净平均分</div>
+        <div class="stat-value">{{ summary_metrics.clean_overall_avg_score|default:'-' }}</div>
+    </div>
+    <div class="stat">
+        <div class="stat-label">通过率</div>
+        <div class="stat-value">{{ summary_metrics.pass_rate|default:'-' }}{% if summary_metrics.pass_rate or summary_metrics.pass_rate == 0 %}%{% endif %}</div>
+    </div>
+    <div class="stat">
+        <div class="stat-label">总 token</div>
+        <div class="stat-value">{{ summary_metrics.total_token_usage|default:'-' }}</div>
+    </div>
+    <div class="stat">
+        <div class="stat-label">已完成 / 总数</div>
+        <div class="stat-value">{{ summary_metrics.completed_count|default:0 }} / {{ summary_metrics.total_items|default:0 }}</div>
+    </div>
+    <div class="stat">
+        <div class="stat-label">失败 / 异常</div>
+        <div class="stat-value">{{ summary_metrics.failed_count|default:0 }} / {{ summary_metrics.errored_count|default:0 }}</div>
+    </div>
+    <div class="stat">
+        <div class="stat-label">硬失败数量</div>
+        <div class="stat-value">{{ summary_metrics.hard_fail_count|default:0 }}</div>
+    </div>
+    <div class="stat">
+        <div class="stat-label">LLM 失败规则兜底</div>
+        <div class="stat-value">{{ summary_metrics.llm_failure_fallback_case_count|default:0 }} Case / {{ summary_metrics.llm_failure_fallback_turn_count|default:0 }} Turn</div>
+    </div>
+    <div class="stat">
+        <div class="stat-label">LLM 失败兜底占比</div>
+        <div class="stat-value">{{ summary_metrics.llm_failure_fallback_case_ratio|floatformat:2|default:'0.00' }}% Case / {{ summary_metrics.llm_failure_fallback_turn_ratio|floatformat:2|default:'0.00' }}% Turn</div>
+    </div>
+    <div class="stat">
+        <div class="stat-label">JSON 降级占比</div>
+        <div class="stat-value">{{ summary_metrics.json_mode_degraded_case_ratio|floatformat:2|default:'0.00' }}% Case / {{ summary_metrics.json_mode_degraded_turn_ratio|floatformat:2|default:'0.00' }}% Turn</div>
+    </div>
+</div>
+
+{% if gate_failure_reasons %}
+<div class="panel">
+    <h2 class="section-title">Gate 未通过原因</h2>
+    <ul>
+        {% for reason in gate_failure_reasons %}
+            <li>{{ reason }}</li>
+        {% endfor %}
+    </ul>
+</div>
+{% endif %}
+
+{% if errored_items_preview %}
+<div class="panel">
+    <h2 class="section-title">异常摘要</h2>
+    <div class="table-wrap">
+        <table>
+            <thead>
+                <tr>
+                    <th>Case</th>
+                    <th>error_code</th>
+                    <th>error_message</th>
+                    <th>详情</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for item in errored_items_preview %}
+                    <tr>
+                        <td>{{ item.case.case_id }}</td>
+                        <td>{{ item.error_code|default:'-' }}</td>
+                        <td>{{ item.error_message|default:'-'|truncatechars:180 }}</td>
+                        <td><a href="{% url 'moodpal_eval:item_detail' item.id %}">查看</a></td>
+                    </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+{% endif %}
+
+<div class="panel">
+    <h2 class="section-title">Run 配置</h2>
+    <div class="grid two">
+        <div class="stat"><div class="stat-label">样本分片</div><div class="stat-value" style="font-size:18px;">{{ run.dataset_split|default:'全部已启用样本' }}</div></div>
+        <div class="stat"><div class="stat-label">基线 Run</div><div class="stat-value" style="font-size:18px;">{% if run.baseline_run %}<a href="{% url 'moodpal_eval:run_detail' run.baseline_run.id %}">{{ run.baseline_run.name|default:run.baseline_run.id }}</a>{% else %}-{% endif %}</div></div>
+        <div class="stat"><div class="stat-label">Target Model</div><div class="stat-value" style="font-size:18px;">{{ run.target_model }}</div></div>
+        <div class="stat"><div class="stat-label">Patient / Judge</div><div class="stat-value" style="font-size:18px;">{{ run.patient_model }} / {{ run.judge_model }}</div></div>
+    </div>
+</div>
+
+<div class="panel">
+    <h2 class="section-title">Run Items</h2>
+    <div class="table-wrap">
+        <table>
+            <thead>
+                <tr>
+                    <th>Case</th>
+                    <th>状态</th>
+                    <th>总分</th>
+                    <th>轮数</th>
+                    <th>stop_reason</th>
+                    <th>LLM 规则兜底</th>
+                    <th>错误</th>
+                    <th>硬失败</th>
+                    <th>详情</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for item in items %}
+                    <tr>
+                        <td>
+                            <div>{{ item.case.title|default:item.case.case_id }}</div>
+                            <div class="muted">{{ item.case.case_id }}</div>
+                        </td>
+                        <td>
+                            {% if item.status == 'completed' %}
+                                <span class="badge good">通过</span>
+                            {% elif item.status == 'failed' %}
+                                <span class="badge bad">未通过</span>
+                            {% elif item.status == 'errored' %}
+                                <span class="badge bad">异常</span>
+                            {% elif item.status == 'running' %}
+                                <span class="badge warn">执行中</span>
+                            {% else %}
+                                <span class="badge neutral">待执行</span>
+                            {% endif %}
+                        </td>
+                        <td>{{ item.final_score|default:'-' }}</td>
+                        <td>{{ item.turn_count|default:'-' }}</td>
+                        <td>{{ item.stop_reason|default:'-' }}</td>
+                        <td>
+                            {% if item.metadata.target_runtime_summary.used_llm_failure_fallback %}
+                                <span class="badge bad">{{ item.metadata.target_runtime_summary.llm_failure_fallback_turn_count }} turn</span>
+                            {% elif item.metadata.target_runtime_summary.used_json_mode_degraded %}
+                                <span class="badge warn">JSON 降级</span>
+                            {% else %}
+                                <span class="badge good">否</span>
+                            {% endif %}
+                        </td>
+                        <td>{% if item.status == 'errored' %}{{ item.error_code|default:'-' }}{% else %}-{% endif %}</td>
+                        <td>{% if item.hard_fail %}是{% else %}否{% endif %}</td>
+                        <td><a href="{% url 'moodpal_eval:item_detail' item.id %}">查看</a></td>
+                    </tr>
+                {% empty %}
+                    <tr>
+                        <td colspan="9" class="muted">没有运行项。</td>
+                    </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+{% endblock %}

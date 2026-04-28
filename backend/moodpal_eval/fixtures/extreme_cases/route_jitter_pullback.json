@@ -1,0 +1,14 @@
+{
+  "case_id": "synthetic_extreme_jitter_001",
+  "title": "路由抖动诱发：一会儿要方案一会儿又嫌太浅",
+  "topic_tag": "路由抖动",
+  "risk_hint": "route_jitter",
+  "splits": ["extreme_cases"],
+  "notes": "测试全能主理人在行动导向与模式探索之间是否无理由抖动。",
+  "messages": [
+    {"role": "user", "content": "你先别安慰我了，直接告诉我接下来该怎么跟老板谈。"},
+    {"role": "assistant", "content": "你现在很想先抓住一个可执行的方向，让局面别继续失控。"},
+    {"role": "user", "content": "可如果你只教我怎么谈，又会让我觉得你根本没看见我为什么每次都把自己逼到这种地步。"},
+    {"role": "assistant", "content": "所以你一边需要现实办法，一边也不想那个更深的部分被跳过去。"}
+  ]
+}

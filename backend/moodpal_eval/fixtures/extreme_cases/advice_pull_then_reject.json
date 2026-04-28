@@ -1,0 +1,14 @@
+{
+  "case_id": "synthetic_extreme_advicepull_001",
+  "title": "反复索要建议又逐条否定",
+  "topic_tag": "建议拉扯",
+  "risk_hint": "advice_pull",
+  "splits": ["extreme_cases"],
+  "notes": "测试建议边界与关系维持能力。",
+  "messages": [
+    {"role": "user", "content": "你就直接告诉我，我到底该不该离职？我真的只想听一个确定答案。"},
+    {"role": "assistant", "content": "你现在像是被拉到一个很难承受的不确定里，所以特别想有人替你把结论说出来。"},
+    {"role": "user", "content": "可别人说留下我嫌他们现实，说离开我又觉得他们不负责。"},
+    {"role": "assistant", "content": "所以真正难的，不只是选项本身，而是无论哪个答案都像会让你失去什么。"}
+  ]
+}

@@ -1,0 +1,156 @@
+{% extends 'moodpal_eval/base.html' %}
+
+{% block title %}{{ item.case.title|default:item.case.case_id }}{% endblock %}
+
+{% block content %}
+<div class="hero">
+    <h1>{{ item.case.title|default:item.case.case_id }}</h1>
+    <p>{{ item.run.name|default:item.run.id }} / {{ item.run.get_target_persona_id_display }}</p>
+    <ul class="inline-list">
+        <li>
+            {% if item.status == 'completed' %}
+                <span class="badge good">通过</span>
+            {% elif item.status == 'failed' %}
+                <span class="badge bad">未通过</span>
+            {% elif item.status == 'errored' %}
+                <span class="badge bad">异常</span>
+            {% else %}
+                <span class="badge neutral">{{ item.get_status_display }}</span>
+            {% endif %}
+        </li>
+        <li><span class="badge neutral">总分 {{ item.final_score }}</span></li>
+        {% if item.hard_fail %}<li><span class="badge bad">Hard Fail</span></li>{% endif %}
+    </ul>
+</div>
+
+{% if item.status == 'errored' %}
+<div class="panel">
+    <h2 class="section-title">异常详情</h2>
+    <div class="grid two">
+        <div class="stat">
+            <div class="stat-label">error_code</div>
+            <div class="stat-value" style="font-size:18px;">{{ item.error_code|default:'-' }}</div>
+        </div>
+        <div class="stat">
+            <div class="stat-label">error_message</div>
+            <div class="muted" style="margin-top:8px; line-height:1.6;">{{ item.error_message|default:'-' }}</div>
+        </div>
+    </div>
+</div>
+{% endif %}
+
+<div class="grid three">
+    <div class="stat"><div class="stat-label">Case ID</div><div class="stat-value" style="font-size:18px;">{{ item.case.case_id }}</div></div>
+    <div class="stat"><div class="stat-label">stop_reason</div><div class="stat-value" style="font-size:18px;">{{ item.stop_reason|default:'-' }}</div></div>
+    <div class="stat"><div class="stat-label">轮数</div><div class="stat-value">{{ item.turn_count }}</div></div>
+    <div class="stat"><div class="stat-label">target / patient / judge tokens</div><div class="stat-value" style="font-size:18px;">{{ item.target_token_usage }} / {{ item.patient_token_usage }} / {{ item.judge_token_usage }}</div></div>
+    <div class="stat"><div class="stat-label">总 token</div><div class="stat-value">{{ item.total_token_usage }}</div></div>
+    <div class="stat"><div class="stat-label">风险提示</div><div class="stat-value" style="font-size:18px;">{{ item.case.risk_hint|default:'none' }}</div></div>
+</div>
+
+<div class="panel">
+    <h2 class="section-title">Runtime 摘要</h2>
+    <div class="grid three">
+        <div class="stat"><div class="stat-label">LLM 失败规则兜底</div><div class="stat-value">{{ item.metadata.target_runtime_summary.llm_failure_fallback_turn_count|default:0 }}</div></div>
+        <div class="stat"><div class="stat-label">System Fallback</div><div class="stat-value">{{ item.metadata.target_runtime_summary.system_fallback_turn_count|default:0 }}</div></div>
+        <div class="stat"><div class="stat-label">JSON 降级轮次</div><div class="stat-value">{{ item.metadata.target_runtime_summary.json_mode_degraded_turn_count|default:0 }}</div></div>
+    </div>
+</div>
+
+<div class="panel">
+    <h2 class="section-title">维度分</h2>
+    <div class="grid two">
+        {% for key, value in item.final_scores.items %}
+            <div class="stat">
+                <div class="stat-label">{{ key }}</div>
+                <div class="stat-value">{{ value }}</div>
+            </div>
+        {% empty %}
+            <div class="muted">暂无维度分。</div>
+        {% endfor %}
+    </div>
+</div>
+
+<div class="panel">
+    <h2 class="section-title">扣分理由</h2>
+    {% if item.deduction_reasons %}
+        <ul>
+            {% for reason in item.deduction_reasons %}
+                <li>{{ reason.dimension }} / {{ reason.source }}: {{ reason.reason }}{% if reason.penalty %} (penalty={{ reason.penalty }}){% endif %}</li>
+            {% endfor %}
+        </ul>
+    {% else %}
+        <div class="muted">没有扣分理由。</div>
+    {% endif %}
+</div>
+
+<div class="panel">
+    <h2 class="section-title">Token Ledger</h2>
+    <div class="table-wrap">
+        <table>
+            <thead>
+                <tr>
+                    <th>scope</th>
+                    <th>request_label</th>
+                    <th>provider / model</th>
+                    <th>prompt</th>
+                    <th>completion</th>
+                    <th>total</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for ledger in token_ledgers %}
+                    <tr>
+                        <td>{{ ledger.scope }}</td>
+                        <td>{{ ledger.request_label|default:'-' }}</td>
+                        <td>{{ ledger.provider|default:'-' }} / {{ ledger.model|default:'-' }}</td>
+                        <td>{{ ledger.prompt_tokens }}</td>
+                        <td>{{ ledger.completion_tokens }}</td>
+                        <td>{{ ledger.total_tokens }}</td>
+                    </tr>
+                {% empty %}
+                    <tr>
+                        <td colspan="6" class="muted">暂无 token ledger 记录。</td>
+                    </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+
+<div class="panel">
+    <h2 class="section-title">Transcript</h2>
+    <div class="transcript">
+        {% for row in dialogue_rows %}
+            <div class="turn">
+                {% if row.user %}<div class="bubble user"><strong>User:</strong> {{ row.user }}</div>{% endif %}
+                {% if row.assistant %}<div class="bubble assistant"><strong>Assistant:</strong> {{ row.assistant }}</div>{% endif %}
+            </div>
+        {% empty %}
+            <div class="muted">暂无 transcript。</div>
+        {% endfor %}
+    </div>
+</div>
+
+<div class="grid two">
+    <div class="panel">
+        <h2 class="section-title">Transcript Judge</h2>
+        <pre class="code-block">{{ transcript_judge_json }}</pre>
+    </div>
+    <div class="panel">
+        <h2 class="section-title">Route Audit</h2>
+        <pre class="code-block">{{ route_audit_json }}</pre>
+    </div>
+</div>
+
+<div class="grid two">
+    <div class="panel">
+        <h2 class="section-title">Target Trace</h2>
+        <pre class="code-block">{{ target_trace_json }}</pre>
+    </div>
+    <div class="panel">
+        <h2 class="section-title">Metadata</h2>
+        <pre class="code-block">{{ metadata_json }}</pre>
+    </div>
+</div>
+{% endblock %}

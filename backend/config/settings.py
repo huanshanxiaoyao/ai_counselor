@@ -39,6 +39,7 @@ INSTALLED_APPS = [
     'channels',
     'backend.chat',
     'backend.moodpal',
+    'backend.moodpal_eval',
     'backend.roundtable',
 ]
 
@@ -155,6 +156,7 @@ CORS_ALLOW_ALL_ORIGINS = DEBUG
 LLM_DEFAULT_PROVIDER = os.getenv('LLM_DEFAULT_PROVIDER', 'qwen')
 LLM_TIMEOUT = int(os.getenv('LLM_TIMEOUT', '12'))
 LLM_MAX_RETRIES = int(os.getenv('LLM_MAX_RETRIES', '3'))
+MOODPAL_RUNTIME_MAX_TOKENS = int(os.getenv('MOODPAL_RUNTIME_MAX_TOKENS', '700'))
 TOKEN_QUOTA_LIMIT = int(
     os.getenv('TOKEN_QUOTA_LIMIT', '100000' if DEBUG else '1000000')
 )

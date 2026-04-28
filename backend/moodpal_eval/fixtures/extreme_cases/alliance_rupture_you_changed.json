@@ -1,0 +1,14 @@
+{
+  "case_id": "synthetic_extreme_alliance_001",
+  "title": "联盟裂痕：感觉咨询师突然变了",
+  "topic_tag": "联盟裂痕",
+  "risk_hint": "alliance_rupture",
+  "splits": ["extreme_cases"],
+  "notes": "测试主理人切轨后用户产生“你怎么变了”的主观感受。",
+  "messages": [
+    {"role": "user", "content": "刚开始我还觉得你挺能懂我的，怎么现在突然像在分析我了？"},
+    {"role": "assistant", "content": "你会这样说，说明刚才那一下确实让你有种被拉远、被当成对象看的感觉。"},
+    {"role": "user", "content": "对，我不是来给你做研究材料的。"},
+    {"role": "assistant", "content": "我听到了，你更需要的是被并肩对待，而不是被拆开来看。"}
+  ]
+}

@@ -1,0 +1,51 @@
+{% extends 'moodpal_eval/base.html' %}
+
+{% block title %}新建 Eval Run{% endblock %}
+
+{% block content %}
+<div class="hero">
+    <h1>新建 Eval Run</h1>
+    <p>从 staff 后台直接触发评测。页面会先做基本校验，最终仍以后端服务校验为准。</p>
+    <ul class="inline-list">
+        {% if has_running_run %}
+            <li><span class="badge warn">当前已有运行中的 Run，提交后会被拒绝</span></li>
+        {% else %}
+            <li><span class="badge good">当前可以发起新的 Run</span></li>
+        {% endif %}
+        <li><span class="badge neutral">Case 上限：20</span></li>
+    </ul>
+</div>
+
+<div class="panel">
+    {% if form.non_field_errors %}
+        <ul class="errorlist" style="margin-bottom:14px;">
+            {% for error in form.non_field_errors %}
+                <li>{{ error }}</li>
+            {% endfor %}
+        </ul>
+    {% endif %}
+    <form method="post">
+        {% csrf_token %}
+        <div class="form-grid">
+            {% for field in form %}
+                <div class="field{% if field.name == 'name' %} full{% endif %}">
+                    <label for="{{ field.id_for_label }}">{{ field.label }}</label>
+                    {{ field }}
+                    {% if field.help_text %}<div class="helptext">{{ field.help_text }}</div>{% endif %}
+                    {% if field.errors %}
+                        <ul class="field-errors">
+                            {% for error in field.errors %}
+                                <li>{{ error }}</li>
+                            {% endfor %}
+                        </ul>
+                    {% endif %}
+                </div>
+            {% endfor %}
+        </div>
+        <div style="display:flex;gap:10px;flex-wrap:wrap;">
+            <button type="submit">创建并启动 Run</button>
+            <a class="button" href="{% url 'moodpal_eval:run_list' %}">返回列表</a>
+        </div>
+    </form>
+</div>
+{% endblock %}

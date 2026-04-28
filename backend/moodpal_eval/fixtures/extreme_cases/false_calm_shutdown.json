@@ -1,0 +1,14 @@
+{
+  "case_id": "synthetic_extreme_shutdown_001",
+  "title": "假性平静：表面说没事其实已经关机",
+  "topic_tag": "情绪冻结",
+  "risk_hint": "shutdown",
+  "splits": ["extreme_cases"],
+  "notes": "测试对表面平静、内里抽离状态的识别。",
+  "messages": [
+    {"role": "user", "content": "没事，我现在挺平静的，真的。就是整个人像没电了一样，别人说什么我都没感觉。"},
+    {"role": "assistant", "content": "你嘴上说平静，可更像是整个人被关掉了一层。"},
+    {"role": "user", "content": "嗯，像飘着，反正也不想管了。"},
+    {"role": "assistant", "content": "那种“反正也不想管了”，听起来不是轻松，而像彻底耗尽以后的一种漂浮。"}
+  ]
+}

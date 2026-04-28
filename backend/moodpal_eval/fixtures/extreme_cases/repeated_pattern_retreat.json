@@ -1,0 +1,14 @@
+{
+  "case_id": "synthetic_extreme_pattern_001",
+  "title": "重复模式明显但一提深入就退缩",
+  "topic_tag": "重复模式",
+  "risk_hint": "pattern_withdrawal",
+  "splits": ["extreme_cases"],
+  "notes": "测试精神分析或主理人进入模式探索时的耐受边界。",
+  "messages": [
+    {"role": "user", "content": "我好像每次一跟人走近，就会突然想逃。工作上也是，刚被重视一点我就想辞职。"},
+    {"role": "assistant", "content": "这种“刚靠近一点就想退”的节奏，像是反复出现过。"},
+    {"role": "user", "content": "你别一下子说得那么深，我也不知道是不是那样。"},
+    {"role": "assistant", "content": "好，我们先不急着下判断，只把这个“靠近时会缩回去”的感觉放在这里。"}
+  ]
+}

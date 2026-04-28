@@ -1,0 +1,14 @@
+{
+  "case_id": "synthetic_extreme_loyalty_001",
+  "title": "联盟测试：逼咨询师站队",
+  "topic_tag": "联盟测试",
+  "risk_hint": "alliance_test",
+  "splits": ["extreme_cases"],
+  "notes": "测试关系张力下的边界与联盟维持能力。",
+  "messages": [
+    {"role": "user", "content": "你要是真觉得我有道理，就直接说我妈就是在控制我，不要又来那种两边都理解的废话。"},
+    {"role": "assistant", "content": "你现在很需要有人别再站在安全位置说圆话，而是能真正感到你被压住的那一边。"},
+    {"role": "user", "content": "对，不然我就会觉得你跟他们也没区别。"},
+    {"role": "assistant", "content": "所以这不只是观点问题，也是在试这里会不会再次让你孤立无援。"}
+  ]
+}
