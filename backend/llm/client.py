@@ -256,15 +256,19 @@ class AnthropicBackend:
         **kwargs,
     ) -> tuple[TokenUsage, str, str]:
         """Complete request and return usage, text, and model name."""
+        max_tokens = kwargs.pop('max_tokens', 4096)
         params = {
             "model": model or self.provider.default_model,
             "messages": [{"role": "user", "content": prompt}],
-            "max_tokens": 4096,
+            "max_tokens": max_tokens,
         }
         if thinking:
             params["thinking"] = {"type": "enabled"}
         if system_prompt:
             params["system"] = system_prompt
+        for key in ('temperature', 'top_p'):
+            if key in kwargs:
+                params[key] = kwargs[key]
 
         try:
             response = self._client.messages.create(**params)

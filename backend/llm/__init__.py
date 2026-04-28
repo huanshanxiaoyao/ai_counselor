@@ -12,6 +12,14 @@ from .exceptions import (
     LLMTimeoutError,
     LLMMaxRetriesExceededError,
 )
+from .structured_output import (
+    StructuredOutputResult,
+    complete_json_with_fallback,
+    complete_json_with_strategy,
+    is_json_mode_unsupported_error,
+    parse_json_payload,
+    reset_structured_output_policy_cache,
+)
 
 __all__ = [
     'LLMClient',
@@ -25,4 +33,10 @@ __all__ = [
     'LLMAPIError',
     'LLMTimeoutError',
     'LLMMaxRetriesExceededError',
+    'StructuredOutputResult',
+    'complete_json_with_fallback',
+    'complete_json_with_strategy',
+    'is_json_mode_unsupported_error',
+    'parse_json_payload',
+    'reset_structured_output_policy_cache',
 ]
