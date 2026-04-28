@@ -14,6 +14,7 @@ class MoodPalSession(models.Model):
         CLOSED = 'closed', '已关闭'
 
     class Persona(models.TextChoices):
+        MASTER_GUIDE = 'master_guide', '全能主理人'
         LOGIC_BROTHER = 'logic_brother', '逻辑派的邻家哥哥'
         EMPATHY_SISTER = 'empathy_sister', '共情派的知心学姐'
         INSIGHT_MENTOR = 'insight_mentor', '深挖派的心理学前辈'
