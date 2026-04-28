@@ -46,8 +46,25 @@
         display: grid;
         gap: 14px;
     }
+    .persona-card-head {
+        display: flex;
+        justify-content: space-between;
+        gap: 12px;
+        align-items: flex-start;
+    }
     .persona-card h3 { margin: 0; font-size: 24px; }
     .persona-card .subtitle { color: #8de1db; font-size: 13px; }
+    .persona-badge {
+        display: inline-flex;
+        align-items: center;
+        padding: 6px 10px;
+        border-radius: 999px;
+        background: rgba(244, 198, 119, 0.14);
+        border: 1px solid rgba(244, 198, 119, 0.3);
+        color: #f4c677;
+        font-size: 12px;
+        white-space: nowrap;
+    }
     .persona-card p { margin: 0; color: #d7dde2; min-height: 72px; }
     .persona-problems { display: flex; flex-wrap: wrap; gap: 8px; }
     .persona-problems span {
@@ -189,7 +206,7 @@
     <div class="moodpal-hero">
         <span class="moodpal-kicker">MoodPal</span>
         <h2>选择一个陪伴你的角色，开始一段可持续的情绪支持会话。</h2>
-        <p>当前版本已经支持角色入口、短期消息容器、摘要草稿确认和“阅后即焚”最小闭环。其中“逻辑派的邻家哥哥”与“共情派的知心学姐”已接入首版状态机链路，“深挖派的心理学前辈”将在后续版本继续完善。</p>
+        <p>当前版本已接入“全能主理人”编排层，以及 CBT、人本主义、探索式对话三条首版状态机链路。你可以直接指定角色，也可以先从默认推荐的全能主理人开始，让系统边聊边判断更合适的推进方式。</p>
         <div class="moodpal-note">非医疗建议：MoodPal 提供的是情绪支持与方法性陪伴，不替代医疗诊断、紧急援助或线下专业治疗。</div>
     </div>
 
@@ -201,9 +218,14 @@
             {% csrf_token %}
             <input type="hidden" name="persona_id" value="{{ persona.id }}">
             <input type="hidden" name="privacy_acknowledged" value="0">
-            <div>
-                <h3>{{ persona.title }}</h3>
-                <div class="subtitle">{{ persona.subtitle }}</div>
+            <div class="persona-card-head">
+                <div>
+                    <h3>{{ persona.title }}</h3>
+                    <div class="subtitle">{{ persona.subtitle }}</div>
+                </div>
+                {% if persona.recommended %}
+                <span class="persona-badge">默认推荐</span>
+                {% endif %}
             </div>
             <p>{{ persona.description }}</p>
             <div class="persona-problems">

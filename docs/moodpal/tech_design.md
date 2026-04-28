@@ -89,10 +89,11 @@
    - 长期记忆：确认保存的摘要
 
 ### 5.3 映射关系
-1. 一个 Persona 对应一个主要 Therapy Mode。
-2. 一个 Therapy Mode 对应一套 Graph 模板。
-3. 一个 Session 在任一时刻只运行一条主要 Graph 主链路。
-4. 危机干预优先级高于 Persona 和 Therapy Mode，会直接抢占主链路。
+1. 大多数 Persona 对应一个主要 Therapy Mode。
+2. `Master Guide / 全能主理人` 是例外：它是前台统一 Persona，后台动态调度 Humanistic 支撑层、CBT 主轨与 Psychoanalysis 主轨。
+3. 一个 Therapy Mode 对应一套 Graph 模板。
+4. 一个 Session 在任一时刻只运行一条主要 Graph 主链路；但在跨轮次上，可以按路由规则在不同主链路之间切换。
+5. 危机干预优先级高于 Persona 和 Therapy Mode，会直接抢占主链路。
 
 ## 6. 主流程设计
 
@@ -147,11 +148,14 @@ MoodPal 的一轮核心链路为：
 
 ### 7.2 Graph 粒度建议
 MVP 建议采用：
-1. 一个 Supervisor Graph 负责统一入口、风险抢占、Persona -> Therapy Mode 映射。
+1. 一个 Supervisor Graph 负责统一入口、风险抢占、Persona -> Therapy Mode / Orchestrator 映射。
 2. 每个主要流派一张子图：
    - CBT Graph
    - Humanistic Graph
-   - Exploratory Graph
+   - Psychoanalysis Graph
+3. 若启用 `Master Guide / 全能主理人`，则再增加一张编排图：
+   - Master Guide Orchestrator Graph
+   - 它不是新流派，而是“支撑层 + 主轨选择 + 切轨控制”的上层编排图
 
 ### 7.3 节点职责建议
 每张子图至少包含以下概念节点：
@@ -354,8 +358,12 @@ MVP 先采用两段式策略：
    - 详见 [cbt_langgraph_design.md](/Users/suchong/workspace/ai_counselor/docs/moodpal/cbt_langgraph_design.md)
 4. Humanistic Graph 的首版节点定义
    - 详见 [humanistic_langgraph_design.md](/Users/suchong/workspace/ai_counselor/docs/moodpal/humanistic_langgraph_design.md)
-5. Burn Pipeline 的失败补偿与幂等实现
-6. 前端页面状态与交互细化
+5. Psychoanalysis Graph 的首版节点定义
+   - 详见 [Psychoanalysis_langgraph_design.md](/Users/suchong/workspace/ai_counselor/docs/moodpal/Psychoanalysis_langgraph_design.md)
+6. Master Guide / 全能主理人的编排设计
+   - 详见 [master_guide_tech_design.md](/Users/suchong/workspace/ai_counselor/docs/moodpal/master_guide_tech_design.md)
+7. Burn Pipeline 的失败补偿与幂等实现
+8. 前端页面状态与交互细化
 
 实施顺序建议：
 - 详见 [mvp_execution_plan.md](/Users/suchong/workspace/ai_counselor/docs/moodpal/mvp_execution_plan.md)
