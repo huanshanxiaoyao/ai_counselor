@@ -61,6 +61,7 @@ def destroy_raw_messages(session: MoodPalSession) -> int:
 
     destroyed_at = timezone.now().isoformat()
     metadata = dict(session.metadata or {})
+    metadata.pop('master_guide_state', None)
     metadata.pop('cbt_state', None)
     metadata.pop('humanistic_state', None)
     metadata.pop('psychoanalysis_state', None)

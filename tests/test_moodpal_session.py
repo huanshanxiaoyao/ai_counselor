@@ -37,9 +37,12 @@ def _anon_client(cookie_value: str) -> Client:
 def test_moodpal_home_page_renders():
     client = Client()
     resp = client.get('/moodpal/')
+    content = resp.content.decode('utf-8')
     assert resp.status_code == 200
-    assert 'MoodPal' in resp.content.decode('utf-8')
-    assert '隐私契约与边界说明' in resp.content.decode('utf-8')
+    assert 'MoodPal' in content
+    assert '隐私契约与边界说明' in content
+    assert '全能主理人' in content
+    assert '默认推荐' in content
 
 
 @pytest.mark.django_db
@@ -66,6 +69,27 @@ def test_moodpal_start_session_and_activate_on_first_open():
     session.refresh_from_db()
     assert session.status == MoodPalSession.Status.ACTIVE
     assert session.activated_at is not None
+
+
+@pytest.mark.django_db
+def test_moodpal_session_start_api_supports_master_guide():
+    client = _anon_client('anon-master-guide-start')
+
+    resp = client.post(
+        '/api/moodpal/session/start',
+        data=json.dumps(
+            {
+                'persona_id': MoodPalSession.Persona.MASTER_GUIDE,
+                'privacy_acknowledged': True,
+            }
+        ),
+        content_type='application/json',
+    )
+
+    assert resp.status_code == 201
+    session = MoodPalSession.objects.get()
+    assert session.persona_id == MoodPalSession.Persona.MASTER_GUIDE
+    assert resp.json()['session']['persona_title'] == '全能主理人'
 
 
 @pytest.mark.django_db
@@ -596,8 +620,8 @@ def test_append_message_pair_preserves_concurrent_metadata_updates():
         },
     )
 
-    def _fake_build_reply(current_session, history_messages, user_content):
-        MoodPalSession.objects.filter(pk=current_session.pk).update(
+    def _fake_dispatch_runtime(*, session, history_messages, user_content):
+        MoodPalSession.objects.filter(pk=session.pk).update(
             metadata={
                 'summary_generated_at': '2026-04-22T10:00:00+08:00',
                 'raw_messages_destroyed_at': '2026-04-22T10:05:00+08:00',
@@ -626,7 +650,7 @@ def test_append_message_pair_preserves_concurrent_metadata_updates():
             },
         )
 
-    with patch('backend.moodpal.services.message_service._build_assistant_reply', side_effect=_fake_build_reply):
+    with patch('backend.moodpal.runtime.turn_driver._dispatch_runtime', side_effect=_fake_dispatch_runtime):
         session, user_message, assistant_message = append_message_pair(
             session,
             user_content='我还是一直在担心工作上的一个失误。',
@@ -651,7 +675,7 @@ def test_append_message_pair_returns_system_fallback_when_runtime_raises():
         status=MoodPalSession.Status.ACTIVE,
     )
 
-    with patch('backend.moodpal.services.message_service.run_cbt_turn', side_effect=RuntimeError('boom')):
+    with patch('backend.moodpal.runtime.turn_driver.run_cbt_turn', side_effect=RuntimeError('boom')):
         session, user_message, assistant_message = append_message_pair(
             session,
             user_content='我现在脑子很乱，不知道该从哪说起。',
@@ -673,8 +697,8 @@ def test_append_message_pair_aborts_normal_reply_after_concurrent_crisis_activat
         status=MoodPalSession.Status.ACTIVE,
     )
 
-    def _fake_build_reply(current_session, history_messages, user_content):
-        MoodPalSession.objects.filter(pk=current_session.pk).update(
+    def _fake_dispatch_runtime(*, session, history_messages, user_content):
+        MoodPalSession.objects.filter(pk=session.pk).update(
             metadata={
                 'crisis_active': True,
                 'cbt_state': {
@@ -699,7 +723,7 @@ def test_append_message_pair_aborts_normal_reply_after_concurrent_crisis_activat
             },
         )
 
-    with patch('backend.moodpal.services.message_service._build_assistant_reply', side_effect=_fake_build_reply):
+    with patch('backend.moodpal.runtime.turn_driver._dispatch_runtime', side_effect=_fake_dispatch_runtime):
         with pytest.raises(ValueError, match='session_unavailable'):
             append_message_pair(
                 session,
@@ -733,6 +757,164 @@ def test_moodpal_empathy_persona_uses_humanistic_runtime():
     assert assistant_message.metadata['engine'] == 'humanistic_graph'
     assert assistant_message.metadata['fallback_used'] is True
     assert assistant_message.metadata['technique_id'] == 'hum_reflect_feeling'
+
+
+@pytest.mark.django_db
+def test_moodpal_master_guide_opening_turn_routes_to_support_only():
+    session = MoodPalSession.objects.create(
+        usage_subject='anon:anon-master-guide-opening',
+        anon_id='anon-master-guide-opening',
+        persona_id=MoodPalSession.Persona.MASTER_GUIDE,
+        status=MoodPalSession.Status.ACTIVE,
+    )
+
+    child_result = SimpleNamespace(
+        reply_text='我先接住你现在的难受，我们先不急着分析，先把最压着你的那一块放在这里。',
+        reply_metadata={
+            'engine': 'humanistic_graph',
+            'track': 'empathy_presence',
+            'technique_id': 'hum_empathy_presence',
+            'fallback_action': 'switch_same_phase',
+            'provider': '',
+            'model': '',
+            'usage': {},
+        },
+        persist_patch={
+            'current_phase': 'empathy_presence',
+            'current_technique_id': 'hum_empathy_presence',
+            'dominant_emotions': ['委屈'],
+        },
+        used_fallback=False,
+        state={'last_progress_marker': 'holding_established'},
+    )
+
+    with patch('backend.moodpal.services.master_guide_runtime_service.run_humanistic_turn', return_value=child_result):
+        session, user_message, assistant_message = append_message_pair(
+            session,
+            user_content='我现在脑子很乱，也有点委屈，不知道该从哪里说。',
+        )
+
+    session.refresh_from_db()
+    assert user_message.role == MoodPalMessage.Role.USER
+    assert assistant_message.metadata['engine'] == 'master_guide_orchestrator'
+    assert assistant_message.metadata['selected_mode'] == 'support_only'
+    assert assistant_message.metadata['child_engine'] == 'humanistic_graph'
+    assert assistant_message.metadata['track'] == 'empathy_presence'
+    assert session.metadata['master_guide_state']['current_turn_mode'] == 'support_only'
+    assert session.metadata['master_guide_state']['support_mode'] == 'opening'
+    assert session.metadata['master_guide_state']['turn_index'] == 1
+    assert session.metadata['master_guide_state']['summary_hints']
+    assert session.metadata['humanistic_state']['dominant_emotions'] == ['委屈']
+    assert session.metadata['master_guide_state']['route_trace'][0]['mode'] == 'support_only'
+
+
+@pytest.mark.django_db
+def test_moodpal_master_guide_routes_to_cbt_when_problem_is_clear():
+    session = MoodPalSession.objects.create(
+        usage_subject='anon:anon-master-guide-cbt',
+        anon_id='anon-master-guide-cbt',
+        persona_id=MoodPalSession.Persona.MASTER_GUIDE,
+        status=MoodPalSession.Status.ACTIVE,
+        metadata={
+            'master_guide_state': {
+                'turn_index': 1,
+                'active_main_track': '',
+            }
+        },
+    )
+
+    child_result = SimpleNamespace(
+        reply_text='我们先把工作里最卡住的那个场景说清楚，再看你下一步准备怎么做。',
+        reply_metadata={
+            'engine': 'cbt_graph',
+            'track': 'agenda',
+            'technique_id': 'cbt_structure_agenda_setting',
+            'fallback_action': 'switch_same_track',
+            'provider': '',
+            'model': '',
+            'usage': {},
+        },
+        persist_patch={
+            'current_track': 'agenda',
+            'current_technique_id': 'cbt_structure_agenda_setting',
+            'agenda_topic': '和老板对齐项目分工',
+            'agenda_locked': True,
+        },
+        used_fallback=False,
+        state={'last_progress_marker': 'agenda_locked'},
+    )
+
+    with patch('backend.moodpal.services.master_guide_runtime_service.run_cbt_turn', return_value=child_result):
+        session, _, assistant_message = append_message_pair(
+            session,
+            user_content='这周项目推进不顺，我该怎么和老板说，才能把分工重新讲清楚？',
+        )
+
+    session.refresh_from_db()
+    assert assistant_message.metadata['engine'] == 'master_guide_orchestrator'
+    assert assistant_message.metadata['selected_mode'] == 'cbt'
+    assert assistant_message.metadata['child_engine'] == 'cbt_graph'
+    assert session.metadata['master_guide_state']['active_main_track'] == 'cbt'
+    assert session.metadata['master_guide_state']['used_cbt'] is True
+    assert session.metadata['master_guide_state']['last_route_reason_code'] == 'cbt_problem_solving'
+    assert session.metadata['cbt_state']['agenda_topic'] == '和老板对齐项目分工'
+
+
+@pytest.mark.django_db
+def test_moodpal_master_guide_routes_to_psychoanalysis_for_pattern_signal():
+    session = MoodPalSession.objects.create(
+        usage_subject='anon:anon-master-guide-psy',
+        anon_id='anon-master-guide-psy',
+        persona_id=MoodPalSession.Persona.MASTER_GUIDE,
+        status=MoodPalSession.Status.ACTIVE,
+        metadata={
+            'master_guide_state': {
+                'turn_index': 2,
+                'active_main_track': 'cbt',
+            },
+            'last_summary': {
+                'summary_text': '上次你提到，只要感觉会被评价，就会先往后缩。',
+                'source_session_id': 'prev-master-guide-session',
+                'source_persona_id': MoodPalSession.Persona.MASTER_GUIDE,
+            },
+        },
+    )
+
+    child_result = SimpleNamespace(
+        reply_text='你用了“为什么我总会这样”这句话，里面像是有一条反复出现的线索，我们先别急着解释它。',
+        reply_metadata={
+            'engine': 'psychoanalysis_graph',
+            'track': 'pattern_linking',
+            'technique_id': 'psa_pattern_linking',
+            'fallback_action': 'switch_same_phase',
+            'provider': '',
+            'model': '',
+            'usage': {},
+        },
+        persist_patch={
+            'current_phase': 'pattern_linking',
+            'current_technique_id': 'psa_pattern_linking',
+            'repetition_theme_candidate': 'hiding_to_avoid_evaluation',
+            'pattern_confidence': 0.78,
+        },
+        used_fallback=False,
+        state={'last_progress_marker': 'pattern_named'},
+    )
+
+    with patch('backend.moodpal.services.master_guide_runtime_service.run_psychoanalysis_turn', return_value=child_result):
+        session, _, assistant_message = append_message_pair(
+            session,
+            user_content='为什么我总是在关系里一感觉要被评价，就会立刻缩回去？',
+        )
+
+    session.refresh_from_db()
+    assert assistant_message.metadata['engine'] == 'master_guide_orchestrator'
+    assert assistant_message.metadata['selected_mode'] == 'psychoanalysis'
+    assert assistant_message.metadata['child_engine'] == 'psychoanalysis_graph'
+    assert session.metadata['master_guide_state']['active_main_track'] == 'psychoanalysis'
+    assert session.metadata['master_guide_state']['used_psychoanalysis'] is True
+    assert session.metadata['master_guide_state']['last_switch_reason_code'] == 'psy_repetition_pattern'
+    assert session.metadata['psychoanalysis_state']['repetition_theme_candidate'] == 'hiding_to_avoid_evaluation'
 
 
 @pytest.mark.django_db
@@ -1009,6 +1191,52 @@ def test_moodpal_summary_draft_includes_humanistic_material():
 
 
 @pytest.mark.django_db
+def test_moodpal_summary_draft_includes_master_guide_material():
+    client = _anon_client('anon-master-guide-summary')
+    session = MoodPalSession.objects.create(
+        usage_subject='anon:anon-master-guide-summary',
+        anon_id='anon-master-guide-summary',
+        persona_id=MoodPalSession.Persona.MASTER_GUIDE,
+        status=MoodPalSession.Status.ACTIVE,
+        metadata={
+            'master_guide_state': {
+                'active_main_track': 'psychoanalysis',
+                'used_cbt': True,
+                'used_psychoanalysis': True,
+                'summary_hints': ['先用承接方式把情绪放稳一点', '后来开始看到更长期的重复模式线索'],
+            },
+            'cbt_state': {
+                'agenda_topic': '担心再次被否定',
+            },
+            'psychoanalysis_state': {
+                'focus_theme': '一感觉会被评价，我就想躲开。',
+                'repetition_theme_candidate': 'hiding_to_avoid_evaluation',
+            },
+        },
+    )
+    MoodPalMessage.objects.create(
+        session=session,
+        role=MoodPalMessage.Role.USER,
+        content='我后来发现，只要别人认真看着我，我就会想躲。',
+    )
+    MoodPalMessage.objects.create(
+        session=session,
+        role=MoodPalMessage.Role.ASSISTANT,
+        content='我们这次先把那条一被看见就想往后退的线索放稳一点。',
+    )
+
+    resp = client.post(f'/api/moodpal/session/{session.id}/end')
+    assert resp.status_code == 200
+
+    session.refresh_from_db()
+    assert '这次支持方式的推进：先用承接方式把情绪放稳一点；后来开始看到更长期的重复模式线索' in session.summary_draft
+    assert '当前更适合继续的方向：沿着已经浮现的重复模式，再稳一点往下看。' in session.summary_draft
+    assert '本次锁定的议题：担心再次被否定' in session.summary_draft
+    assert '这次最值得继续跟住的一条线索：一感觉会被评价，我就想躲开。' in session.summary_draft
+    assert '- 哪种支持方式对你更有帮助' in session.summary_draft
+
+
+@pytest.mark.django_db
 def test_moodpal_summary_save_closes_session_and_burns_raw_messages():
     client = _anon_client('anon-summary-save')
     session = MoodPalSession.objects.create(
@@ -1105,6 +1333,67 @@ def test_moodpal_summary_save_persists_psychoanalysis_memory_after_user_confirm(
     assert '这句不会被直接写入长期记忆' not in json.dumps(memory, ensure_ascii=False)
     assert memory['source_session_id'] == str(session.id)
     assert memory['confidence'] >= 0.65
+
+
+@pytest.mark.django_db
+def test_moodpal_master_guide_summary_save_clears_runtime_state_and_keeps_memory():
+    client = _anon_client('anon-master-guide-memory-save')
+    session = MoodPalSession.objects.create(
+        usage_subject='anon:anon-master-guide-memory-save',
+        anon_id='anon-master-guide-memory-save',
+        persona_id=MoodPalSession.Persona.MASTER_GUIDE,
+        status=MoodPalSession.Status.ACTIVE,
+        metadata={
+            'master_guide_state': {
+                'route_trace': [
+                    {'turn_index': 1, 'mode': 'support_only', 'reason_code': 'opening_hold'},
+                    {'turn_index': 2, 'mode': 'psychoanalysis', 'reason_code': 'psy_repetition_pattern'},
+                ],
+                'used_psychoanalysis': True,
+            },
+            'humanistic_state': {
+                'current_phase': 'empathy_presence',
+            },
+            'psychoanalysis_state': {
+                'repetition_theme_candidate': 'hiding_to_avoid_evaluation',
+                'active_defense': 'withdrawal',
+                'relational_pull': 'testing_authority',
+                'pattern_confidence': 0.73,
+            },
+        },
+    )
+    MoodPalMessage.objects.create(
+        session=session,
+        role=MoodPalMessage.Role.USER,
+        content='我后来发现，只要别人认真看着我，我就会想躲。',
+    )
+    MoodPalMessage.objects.create(
+        session=session,
+        role=MoodPalMessage.Role.ASSISTANT,
+        content='这像是一条会反复出现的保护动作。',
+    )
+
+    end_resp = client.post(f'/api/moodpal/session/{session.id}/end')
+    assert end_resp.status_code == 200
+
+    save_resp = client.post(
+        f'/moodpal/session/{session.id}/summary/',
+        data={'action': 'save', 'summary_text': '保留这份编排后的摘要'},
+    )
+    assert save_resp.status_code == 302
+
+    session.refresh_from_db()
+    memory = session.metadata.get('psychoanalysis_memory_v1') or {}
+    assert session.status == MoodPalSession.Status.CLOSED
+    assert session.summary_action == MoodPalSession.SummaryAction.SAVED
+    assert 'master_guide_state' not in session.metadata
+    assert 'humanistic_state' not in session.metadata
+    assert 'psychoanalysis_state' not in session.metadata
+    assert MoodPalMessage.objects.filter(session=session).count() == 0
+    assert memory['schema_version'] == 'v1'
+    assert memory['repetition_themes'] == ['hiding_to_avoid_evaluation']
+    assert memory['defense_patterns'] == ['withdrawal']
+    assert memory['relational_pull'] == ['testing_authority']
 
 
 @pytest.mark.django_db

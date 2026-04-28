@@ -65,6 +65,16 @@ def _build_focus_lines(user_messages: list[str]) -> list[str]:
 
 
 def _common_footer_lines(*, persona_id: str) -> list[str]:
+    if persona_id == MoodPalSession.Persona.MASTER_GUIDE:
+        return [
+            '',
+            '建议保留到长期记忆的内容：',
+            '- 哪种支持方式对你更有帮助',
+            '- 这次开始清楚的现实卡点或重复模式',
+            '- 下次最想继续推进的方向',
+            '',
+            '你可以直接编辑这份摘要，只保留真正希望未来继续记住的部分。',
+        ]
     if persona_id == MoodPalSession.Persona.INSIGHT_MENTOR:
         return [
             '',
@@ -189,6 +199,44 @@ def _build_humanistic_summary_lines(metadata: dict, *, latest_user: str, latest_
     return lines
 
 
+def _build_master_guide_summary_lines(metadata: dict, *, latest_user: str, latest_assistant: str) -> list[str]:
+    lines: list[str] = []
+    master_state = dict(metadata.get('master_guide_state') or {})
+    summary_hints = [str(item).strip() for item in (master_state.get('summary_hints') or []) if str(item).strip()]
+    active_main_track = str(master_state.get('active_main_track') or '').strip()
+    used_cbt = bool(master_state.get('used_cbt'))
+    used_psychoanalysis = bool(master_state.get('used_psychoanalysis'))
+
+    if summary_hints:
+        lines.append(f"这次支持方式的推进：{'；'.join(summary_hints[:3])}")
+
+    if active_main_track == 'cbt':
+        lines.append('当前更适合继续的方向：先把现实里的问题拆清楚，再看最小可行的一步。')
+    elif active_main_track == 'psychoanalysis':
+        lines.append('当前更适合继续的方向：沿着已经浮现的重复模式，再稳一点往下看。')
+    elif used_cbt and not used_psychoanalysis:
+        lines.append('当前更适合继续的方向：继续用更清楚的现实问题拆解往前推。')
+    elif used_psychoanalysis and not used_cbt:
+        lines.append('当前更适合继续的方向：继续沿着重复模式和触发线索慢慢看清。')
+
+    if used_cbt:
+        cbt_lines = _build_cbt_summary_lines(metadata)
+        if cbt_lines:
+            lines.append(cbt_lines[0])
+    if used_psychoanalysis:
+        psychoanalysis_lines = _build_psychoanalysis_summary_lines(
+            metadata,
+            latest_user=latest_user,
+            latest_assistant=latest_assistant,
+        )
+        if psychoanalysis_lines:
+            lines.append(psychoanalysis_lines[0])
+    if not lines:
+        lines.append(f"这次最值得继续跟住的一点：{latest_user}")
+        lines.append(f"当前阶段的陪伴方向：{latest_assistant}")
+    return lines
+
+
 def build_summary_draft(session: MoodPalSession) -> str:
     messages = list(session.messages.order_by('created_at', 'id'))
     user_messages = [item.content.strip() for item in messages if item.role == MoodPalMessage.Role.USER and item.content.strip()]
@@ -233,7 +281,15 @@ def build_summary_draft(session: MoodPalSession) -> str:
     if metadata.get('crisis_active'):
         lines.append('本次会话触发过安全干预，普通角色化对话已被中止。')
 
-    if session.persona_id == MoodPalSession.Persona.LOGIC_BROTHER:
+    if session.persona_id == MoodPalSession.Persona.MASTER_GUIDE:
+        lines.extend(
+            _build_master_guide_summary_lines(
+                metadata,
+                latest_user=latest_user,
+                latest_assistant=latest_assistant,
+            )
+        )
+    elif session.persona_id == MoodPalSession.Persona.LOGIC_BROTHER:
         lines.extend(_build_cbt_summary_lines(metadata))
     elif session.persona_id == MoodPalSession.Persona.EMPATHY_SISTER:
         lines.extend(

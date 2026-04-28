@@ -22,12 +22,21 @@ from .summary_service import build_summary_draft
 
 
 PERSONA_CATALOG = {
+    MoodPalSession.Persona.MASTER_GUIDE: {
+        'id': MoodPalSession.Persona.MASTER_GUIDE,
+        'title': '全能主理人',
+        'subtitle': '默认推荐｜整合式陪伴',
+        'description': '如果你不确定现在更需要被接住、被梳理，还是想看清反复出现的模式，可以先从这里开始。',
+        'problems': ['刚进来不知道选谁', '情绪和问题交织在一起', '希望边聊边判断方向'],
+        'recommended': True,
+    },
     MoodPalSession.Persona.LOGIC_BROTHER: {
         'id': MoodPalSession.Persona.LOGIC_BROTHER,
         'title': '逻辑派的邻家哥哥',
         'subtitle': 'CBT 内核',
         'description': '擅长把混乱的情绪和想法拆开，帮你一步步看清当下最卡住的地方。',
         'problems': ['脑内反刍', '担心搞砸', '负面假设停不下来'],
+        'recommended': False,
     },
     MoodPalSession.Persona.EMPATHY_SISTER: {
         'id': MoodPalSession.Persona.EMPATHY_SISTER,
@@ -35,6 +44,7 @@ PERSONA_CATALOG = {
         'subtitle': '人本主义陪伴',
         'description': '先接住你的情绪，再慢慢陪你把那些说不清的委屈和疲惫讲明白。',
         'problems': ['今天只想被理解', '情绪泛滥', '不想听大道理'],
+        'recommended': False,
     },
     MoodPalSession.Persona.INSIGHT_MENTOR: {
         'id': MoodPalSession.Persona.INSIGHT_MENTOR,
@@ -42,6 +52,7 @@ PERSONA_CATALOG = {
         'subtitle': '探索式对话',
         'description': '适合反复卡在相似关系模式的人，慢慢理解那些总会被触发的深层原因。',
         'problems': ['总遇到同一类问题', '反复掉进旧模式', '想理解更深层触发点'],
+        'recommended': False,
     },
 }
 
@@ -280,6 +291,11 @@ def destroy_summary(session: MoodPalSession) -> MoodPalSession:
         metadata = dict(session.metadata or {})
         metadata.pop('psychoanalysis_memory_v1', None)
         metadata.pop('pattern_memory_candidate', None)
+        if session.persona_id == MoodPalSession.Persona.MASTER_GUIDE:
+            metadata.pop('master_guide_state', None)
+            metadata.pop('humanistic_state', None)
+            metadata.pop('cbt_state', None)
+            metadata.pop('psychoanalysis_state', None)
         session.metadata = metadata
         session.save(update_fields=['summary_final', 'summary_draft', 'summary_action', 'status', 'metadata', 'updated_at'])
 
@@ -304,6 +320,11 @@ def _serialize_debug_payload(session: MoodPalSession) -> dict | None:
         engine = 'cbt_graph'
         runtime_state = dict(metadata.get(runtime_state_key) or {})
         current_path_key = 'current_track'
+    elif session.persona_id == MoodPalSession.Persona.MASTER_GUIDE:
+        runtime_state_key = 'master_guide_state'
+        engine = 'master_guide_orchestrator'
+        runtime_state = dict(metadata.get(runtime_state_key) or {})
+        current_path_key = 'active_main_track'
     elif session.persona_id == MoodPalSession.Persona.EMPATHY_SISTER:
         runtime_state_key = 'humanistic_state'
         engine = 'humanistic_graph'
@@ -317,28 +338,33 @@ def _serialize_debug_payload(session: MoodPalSession) -> dict | None:
     else:
         runtime_state = {}
 
-    if session.persona_id != MoodPalSession.Persona.INSIGHT_MENTOR and not runtime_state and not last_summary:
+    if session.persona_id not in [MoodPalSession.Persona.INSIGHT_MENTOR, MoodPalSession.Persona.MASTER_GUIDE] and not runtime_state and not last_summary:
         return None
 
     technique_trace = list(runtime_state.get('technique_trace') or [])
+    route_trace = list(runtime_state.get('route_trace') or [])
     payload = {
         'enabled': True,
         'engine': engine,
         'current_stage': runtime_state.get('current_stage', ''),
         'current_track': runtime_state.get(current_path_key, ''),
         'current_phase': runtime_state.get('current_phase', ''),
+        'current_turn_mode': runtime_state.get('current_turn_mode', ''),
         'current_technique_id': runtime_state.get('current_technique_id', ''),
         'next_fallback_action': runtime_state.get('next_fallback_action', ''),
         'circuit_breaker_open': bool(runtime_state.get('circuit_breaker_open')),
         'last_route_reason': runtime_state.get('last_route_reason', ''),
         'technique_trace': technique_trace,
         'trace_length': len(technique_trace),
+        'route_trace': route_trace,
+        'route_trace_length': len(route_trace),
         'last_summary_available': bool(last_summary.get('summary_text')),
         'last_summary_source_session_id': last_summary.get('source_session_id', ''),
         'last_summary_source_persona_id': last_summary.get('source_persona_id', ''),
         'last_summary_preview': _compact_context_text(last_summary.get('summary_text', ''), limit=180),
         'recalled_pattern_memory_count': int(runtime_state.get('recalled_pattern_memory_count') or 0),
         'recalled_pattern_memory_preview': runtime_state.get('recalled_pattern_memory_preview') or [],
+        'summary_hints': list(runtime_state.get('summary_hints') or []),
         'runtime_state_key': runtime_state_key,
         'runtime_state': runtime_state,
     }

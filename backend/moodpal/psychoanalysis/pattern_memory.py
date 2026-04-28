@@ -56,7 +56,7 @@ def _clamp_confidence(value: Any) -> float:
 
 
 def build_psychoanalysis_memory(session: MoodPalSession) -> dict[str, Any]:
-    if session.persona_id != MoodPalSession.Persona.INSIGHT_MENTOR:
+    if session.persona_id not in [MoodPalSession.Persona.INSIGHT_MENTOR, MoodPalSession.Persona.MASTER_GUIDE]:
         return {}
 
     state = dict((session.metadata or {}).get('psychoanalysis_state') or {})
