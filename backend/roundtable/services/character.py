@@ -246,7 +246,8 @@ class CharacterAgent:
 
         can_discuss = temporal_constraints.get('can_discuss', [])[:self._LIMIT_CAN_DISCUSS]
         cannot_discuss = temporal_constraints.get('cannot_discuss', [])[:self._LIMIT_CANNOT_DISCUSS]
-        knowledge_cutoff = temporal_constraints.get('knowledge_cutoff', '')[:self._LIMIT_KNOWLEDGE_CUTOFF]
+        raw_knowledge_cutoff = temporal_constraints.get('knowledge_cutoff', '')
+        knowledge_cutoff = str(raw_knowledge_cutoff or '')[:self._LIMIT_KNOWLEDGE_CUTOFF]
 
         tone = language_style.get('tone', '中性')[:self._LIMIT_TONE]
         raw_catchphrases = language_style.get('catchphrases', [])[:3]  # 最多 3 条

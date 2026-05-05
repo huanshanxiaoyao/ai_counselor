@@ -233,6 +233,30 @@ class TestCharacterAgent:
             assert isinstance(result, str)
             assert len(result) > 0
 
+    def test_generate_speech_accepts_numeric_knowledge_cutoff(self, character_agent):
+        """knowledge_cutoff may come from JSON as an integer and should still render."""
+        config = {
+            'name': '培根',
+            'era': '近代早期',
+            'bio': '英国哲学家',
+            'background': '经验主义先驱',
+            'language_style': {'tone': '庄重', 'catchphrases': [], 'speaking_habits': ''},
+            'temporal_constraints': {'can_discuss': [], 'cannot_discuss': [], 'knowledge_cutoff': 1626},
+            'viewpoints': {}
+        }
+
+        mock_result = MagicMock()
+        mock_result.text = "知识应服务于人类福祉。@主持人"
+        mock_result.usage = None
+        with patch.object(character_agent.client, 'complete_with_metadata') as mock_complete:
+            mock_complete.return_value = mock_result
+            result = character_agent.generate_speech(config, "科学如何改造世界", "")
+
+        assert isinstance(result, str)
+        assert len(result) > 0
+        system_prompt = mock_complete.call_args.kwargs['system_prompt']
+        assert '知识截止于：1626' in system_prompt
+
 
 class TestModeratorAgent:
     """Tests for ModeratorAgent"""
