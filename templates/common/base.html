@@ -4,6 +4,8 @@
     {% load static %}
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="theme-color" content="#0d1829">
+    <meta name="apple-mobile-web-app-capable" content="yes">
     <title>{% block title %}AI Tools{% endblock %}</title>
     <link rel="stylesheet" href="{% static 'css/style.css' %}">
     {% block extra_css %}{% endblock %}
@@ -12,12 +14,11 @@
     <header class="header">
         <div class="header-content">
             <a href="{% url 'home' %}" class="logo">AI Tools</a>
-            <nav class="nav">
+            <nav class="nav" id="main-nav" aria-label="主导航">
                 <a href="{% url 'home' %}" class="nav-link">首页</a>
                 <a href="{% url 'moodpal:index' %}" class="nav-link">MoodPal</a>
                 <a href="{% url 'llm_test' %}" class="nav-link">LLM 对比测试</a>
                 <a href="{% url 'roundtable:index' %}" class="nav-link">圆桌会谈</a>
-                <button type="button" class="nav-quota" id="global-quota-pill" title="查看 token 用量">Token --</button>
                 <span class="nav-auth">
                     {% if user.is_authenticated %}
                     <form method="post" action="{% url 'logout' %}" style="display: inline;">
@@ -30,6 +31,14 @@
                     {% endif %}
                 </span>
             </nav>
+            <div class="header-actions">
+                <button type="button" class="nav-quota" id="global-quota-pill" title="查看 token 用量">Token --</button>
+                <button type="button" class="nav-hamburger" id="nav-hamburger" aria-label="切换导航菜单" aria-expanded="false">
+                    <span></span>
+                    <span></span>
+                    <span></span>
+                </button>
+            </div>
         </div>
     </header>
 
@@ -213,6 +222,48 @@
             }, 60000);
             document.addEventListener('visibilitychange', () => {
                 if (!document.hidden) fetchQuota();
+            });
+        })();
+    </script>
+
+    <script>
+        (function initNavHamburger() {
+            const hamburger = document.getElementById('nav-hamburger');
+            const nav = document.getElementById('main-nav');
+            if (!hamburger || !nav) return;
+
+            function closeNav() {
+                nav.classList.remove('open');
+                hamburger.setAttribute('aria-expanded', 'false');
+                document.body.classList.remove('nav-open');
+            }
+
+            function openNav() {
+                nav.classList.add('open');
+                hamburger.setAttribute('aria-expanded', 'true');
+                document.body.classList.add('nav-open');
+            }
+
+            hamburger.addEventListener('click', () => {
+                nav.classList.contains('open') ? closeNav() : openNav();
+            });
+
+            nav.querySelectorAll('.nav-link').forEach((link) => {
+                link.addEventListener('click', closeNav);
+            });
+
+            document.addEventListener('keydown', (e) => {
+                if (e.key === 'Escape') closeNav();
+            });
+
+            document.addEventListener('click', (e) => {
+                if (nav.classList.contains('open') && !nav.contains(e.target) && e.target !== hamburger && !hamburger.contains(e.target)) {
+                    closeNav();
+                }
+            });
+
+            document.addEventListener('visibilitychange', () => {
+                if (document.hidden) closeNav();
             });
         })();
     </script>

@@ -17,7 +17,7 @@ from .burn_service import (
     mark_summary_generated,
     mark_summary_saved,
 )
-from .model_option_service import describe_selected_model, normalize_selected_model
+from .model_option_service import MODEL_SCOPE_ASSISTANT, describe_selected_model, normalize_selected_model
 from .summary_service import build_summary_draft
 
 
@@ -157,7 +157,7 @@ def create_session(
         usage_subject=access.subject_key,
         anon_id=access.anon_id,
         persona_id=persona_id,
-        selected_model=normalize_selected_model(selected_model),
+        selected_model=normalize_selected_model(selected_model, scope=MODEL_SCOPE_ASSISTANT),
         metadata=metadata,
         status=MoodPalSession.Status.STARTING,
         last_activity_at=_now(),
@@ -379,7 +379,7 @@ def serialize_session(session: MoodPalSession) -> dict:
         'persona_id': session.persona_id,
         'persona_title': persona['title'],
         'selected_model': session.selected_model,
-        'selected_model_label': describe_selected_model(session.selected_model),
+        'selected_model_label': describe_selected_model(session.selected_model, scope=MODEL_SCOPE_ASSISTANT),
         'privacy_acknowledged': bool((session.metadata or {}).get('privacy_acknowledged')),
         'privacy_acknowledged_at': (session.metadata or {}).get('privacy_acknowledged_at'),
         'crisis_active': bool((session.metadata or {}).get('crisis_active')),

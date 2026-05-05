@@ -9,7 +9,7 @@ from pathlib import Path
 from django.core.management.base import BaseCommand, CommandError
 
 from backend.llm import LLMAPIError, LLMClient
-from backend.moodpal.services.model_option_service import get_model_options, normalize_selected_model
+from backend.moodpal.services.model_option_service import MODEL_SCOPE_JUDGE, get_model_options, is_selected_model_allowed, normalize_selected_model
 from backend.moodpal_eval.services.structured_completion_service import complete_json_with_strategy
 
 
@@ -114,13 +114,16 @@ def _resolve_models(*, raw_models: str, include_openai: bool) -> list[str]:
     if raw_models.strip():
         values = []
         for part in raw_models.split(','):
-            normalized = normalize_selected_model(part)
+            value = (part or '').strip()
+            if value and not is_selected_model_allowed(value, scope=MODEL_SCOPE_JUDGE):
+                raise CommandError(f'invalid_model:{value}')
+            normalized = normalize_selected_model(value, scope=MODEL_SCOPE_JUDGE)
             if normalized not in values:
                 values.append(normalized)
         return values
 
     values = []
-    for item in get_model_options():
+    for item in get_model_options(scope=MODEL_SCOPE_JUDGE):
         provider = item['provider']
         if provider == 'openai' and not include_openai:
             continue

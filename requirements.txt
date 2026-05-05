@@ -21,6 +21,7 @@ anthropic>=0.40.0
 # Utils
 python-dotenv>=1.0.0
 requests>=2.31.0
+websockets>=11.0
 
 # Development
 pytest>=8.0.0

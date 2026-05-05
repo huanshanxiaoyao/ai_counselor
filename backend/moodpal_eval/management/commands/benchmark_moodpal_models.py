@@ -8,7 +8,14 @@ from pathlib import Path
 from django.core.management.base import BaseCommand, CommandError
 
 from backend.moodpal.models import MoodPalSession
-from backend.moodpal.services.model_option_service import get_model_options, normalize_selected_model
+from backend.moodpal.services.model_option_service import (
+    MODEL_SCOPE_ASSISTANT,
+    MODEL_SCOPE_JUDGE,
+    MODEL_SCOPE_PATIENT,
+    get_model_options,
+    is_selected_model_allowed,
+    normalize_selected_model,
+)
 from backend.moodpal_eval.models import MoodPalEvalCase
 from backend.moodpal_eval.services.run_executor import execute_run
 from backend.moodpal_eval.services.run_service import RunCreateInput, create_run, get_run
@@ -106,8 +113,8 @@ class Command(BaseCommand):
         if not target_models:
             raise CommandError('no_target_models_selected')
 
-        patient_model = normalize_selected_model(options['patient_model'])
-        judge_model = normalize_selected_model(options['judge_model'])
+        patient_model = _resolve_scoped_model(options['patient_model'], scope=MODEL_SCOPE_PATIENT, field_name='patient_model')
+        judge_model = _resolve_scoped_model(options['judge_model'], scope=MODEL_SCOPE_JUDGE, field_name='judge_model')
         dataset_split = (options['dataset_split'] or '').strip()
 
         sample_cases = _resolve_case_sample(dataset_split=dataset_split, case_count=case_count)
@@ -206,19 +213,26 @@ def _resolve_target_models(raw_models: str) -> list[str]:
     if raw_models.strip():
         values = []
         for part in raw_models.split(','):
-            normalized = normalize_selected_model(part)
+            normalized = _resolve_scoped_model(part, scope=MODEL_SCOPE_ASSISTANT, field_name='target_model')
             if normalized not in values:
                 values.append(normalized)
         return values
 
     values = []
-    for item in get_model_options():
+    for item in get_model_options(scope=MODEL_SCOPE_ASSISTANT):
         if item['provider'] == 'openai':
             continue
         selected_model = item['value']
         if selected_model not in values:
             values.append(selected_model)
     return values
+
+
+def _resolve_scoped_model(raw_value: str, *, scope: str, field_name: str) -> str:
+    value = (raw_value or '').strip()
+    if value and not is_selected_model_allowed(value, scope=scope):
+        raise CommandError(f'invalid_{field_name}:{value}')
+    return normalize_selected_model(value, scope=scope)
 
 
 def _resolve_case_sample(*, dataset_split: str, case_count: int) -> list[MoodPalEvalCase]:

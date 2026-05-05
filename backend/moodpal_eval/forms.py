@@ -3,7 +3,13 @@ from __future__ import annotations
 from django import forms
 
 from backend.moodpal.models import MoodPalSession
-from backend.moodpal.services.model_option_service import get_default_selected_model, get_model_options
+from backend.moodpal.services.model_option_service import (
+    MODEL_SCOPE_ASSISTANT,
+    MODEL_SCOPE_JUDGE,
+    MODEL_SCOPE_PATIENT,
+    get_default_selected_model,
+    get_model_options,
+)
 from backend.moodpal_eval.models import MoodPalEvalRun
 from backend.moodpal_eval.services.run_service import (
     MAX_CONCURRENCY_LIMIT,
@@ -39,11 +45,16 @@ class MoodPalEvalRunCreateForm(forms.Form):
         split_choices = [(item['value'], item['label']) for item in list_split_options()]
         self.fields['dataset_split'].choices = split_choices
 
-        model_choices = [(item['value'], item['label']) for item in get_model_options()]
-        default_model = get_default_selected_model()
-        for field_name in ['target_model', 'patient_model', 'judge_model']:
-            self.fields[field_name].choices = model_choices
-            self.fields[field_name].initial = default_model
+        target_choices = [(item['value'], item['label']) for item in get_model_options(scope=MODEL_SCOPE_ASSISTANT)]
+        patient_choices = [(item['value'], item['label']) for item in get_model_options(scope=MODEL_SCOPE_PATIENT)]
+        judge_choices = [(item['value'], item['label']) for item in get_model_options(scope=MODEL_SCOPE_JUDGE)]
+
+        self.fields['target_model'].choices = target_choices
+        self.fields['target_model'].initial = get_default_selected_model(scope=MODEL_SCOPE_ASSISTANT)
+        self.fields['patient_model'].choices = patient_choices
+        self.fields['patient_model'].initial = get_default_selected_model(scope=MODEL_SCOPE_PATIENT)
+        self.fields['judge_model'].choices = judge_choices
+        self.fields['judge_model'].initial = get_default_selected_model(scope=MODEL_SCOPE_JUDGE)
 
         baseline_choices = [('', '不比较基线')]
         for run in list_completed_runs()[:50]:

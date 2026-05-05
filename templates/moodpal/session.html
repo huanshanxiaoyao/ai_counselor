@@ -444,7 +444,8 @@
         background: var(--input-bg);
         color: var(--ink-1);
         padding: 18px 18px 16px;
-        resize: vertical;
+        resize: none;
+        overflow-y: hidden;
         box-sizing: border-box;
         font: inherit;
         line-height: 1.8;
@@ -521,6 +522,50 @@
         min-height: 20px;
         color: #a04b3b;
         font-size: 0.9rem;
+    }
+
+    .composer-mic {
+        appearance: none;
+        border: 1px solid rgba(92, 76, 61, 0.14);
+        border-radius: 16px;
+        padding: 12px 14px;
+        background: rgba(255, 252, 247, 0.9);
+        color: var(--ink-2);
+        cursor: pointer;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        gap: 6px;
+        font: inherit;
+        font-size: 0.88rem;
+        font-weight: 600;
+        transition: all 160ms ease;
+        flex-shrink: 0;
+        white-space: nowrap;
+        box-shadow: 0 6px 14px rgba(92, 71, 48, 0.06);
+    }
+
+    .composer-mic:hover:not(:disabled) {
+        border-color: rgba(121, 146, 132, 0.3);
+        color: var(--sage-deep);
+    }
+
+    .composer-mic.recording {
+        background: rgba(192, 79, 62, 0.1);
+        border-color: rgba(192, 79, 62, 0.3);
+        color: #a0392a;
+        animation: mic-pulse 1.4s ease-in-out infinite;
+    }
+
+    .composer-mic.processing {
+        opacity: 0.55;
+        cursor: default;
+        animation: none;
+    }
+
+    @keyframes mic-pulse {
+        0%, 100% { transform: scale(1); box-shadow: 0 0 0 0 rgba(192, 79, 62, 0.2); }
+        50% { transform: scale(1.05); box-shadow: 0 0 0 6px rgba(192, 79, 62, 0); }
     }
 
     .debug-panel {
@@ -620,6 +665,27 @@
         }
     }
 
+    .typing-indicator {
+        display: flex;
+        align-items: center;
+        gap: 5px;
+        padding: 14px 18px;
+    }
+    .typing-indicator span {
+        display: block;
+        width: 7px;
+        height: 7px;
+        border-radius: 50%;
+        background: var(--ink-3);
+        animation: typing-dot 1.2s infinite;
+    }
+    .typing-indicator span:nth-child(2) { animation-delay: 0.2s; }
+    .typing-indicator span:nth-child(3) { animation-delay: 0.4s; }
+    @keyframes typing-dot {
+        0%, 60%, 100% { transform: translateY(0);    opacity: 0.35; }
+        30%           { transform: translateY(-5px); opacity: 1;    }
+    }
+
     @media (max-width: 900px) {
         body.moodpal-session-page .main-content {
             padding: 24px 20px 44px;
@@ -690,6 +756,40 @@
         .composer button {
             flex: 1 1 160px;
             justify-content: center;
+            text-align: center;
+        }
+
+        .composer {
+            padding-bottom: calc(16px + env(safe-area-inset-bottom));
+        }
+
+        .composer textarea {
+            min-height: 56px;
+        }
+    }
+
+    @media (max-width: 480px) {
+        .composer-footer {
+            flex-direction: column;
+            align-items: stretch;
+        }
+
+        .composer-hint {
+            max-width: none;
+        }
+
+        .composer-actions {
+            flex-direction: column;
+            gap: 8px;
+            margin-left: 0;
+            width: 100%;
+        }
+
+        .session-end-btn,
+        .composer button {
+            width: 100%;
+            min-height: 48px;
+            flex: none;
             text-align: center;
         }
     }
@@ -792,6 +892,10 @@
                 <div class="composer-hint" id="composer-hint">结束后会先生成摘要草稿，再由你决定保留摘要，或把摘要与原始消息全部销毁。</div>
                 <div class="composer-actions">
                     <button type="button" class="session-end-btn" id="session-end-btn">结束会话</button>
+                    <button type="button" class="composer-mic" id="composer-mic-btn" title="语音输入" aria-label="开始语音输入">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 2a3 3 0 0 1 3 3v7a3 3 0 0 1-6 0V5a3 3 0 0 1 3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" y1="19" x2="12" y2="22"/><line x1="8" y1="22" x2="16" y2="22"/></svg>
+                        <span id="composer-mic-label">语音</span>
+                    </button>
                     <button type="submit" id="message-submit">发送</button>
                 </div>
             </div>
@@ -899,6 +1003,22 @@
         let timer = null;
         let ended = false;
 
+        (function initTextareaAutoGrow() {
+            if (!input) return;
+            function grow() {
+                input.style.height = 'auto';
+                const lineHeight = parseFloat(getComputedStyle(input).lineHeight) || 26;
+                const maxHeight = Math.round(lineHeight * 5) + 34;
+                const next = Math.min(input.scrollHeight, maxHeight);
+                input.style.height = next + 'px';
+                input.style.overflowY = input.scrollHeight > maxHeight ? 'auto' : 'hidden';
+            }
+            input.addEventListener('input', grow);
+            input.addEventListener('focus', () => {
+                setTimeout(() => input.scrollIntoView({behavior: 'smooth', block: 'nearest'}), 280);
+            });
+        })();
+
         function escapeHtml(text) {
             const div = document.createElement('div');
             div.textContent = text || '';
@@ -939,6 +1059,7 @@
             row.appendChild(bubble);
             log.appendChild(row);
             row.scrollIntoView({behavior: 'smooth', block: 'end'});
+            return row;
         }
 
         async function autoEnd() {
@@ -1028,6 +1149,32 @@
             timer = window.setTimeout(autoEnd, remainingMs);
         }
 
+        function showTypingIndicator() {
+            const row = document.createElement('div');
+            row.className = 'chat-row assistant';
+            row.id = 'typing-indicator-row';
+            const bubble = document.createElement('div');
+            bubble.className = 'chat-bubble assistant';
+            const role = document.createElement('div');
+            role.className = 'chat-role';
+            role.textContent = sessionState.persona_title;
+            const indicator = document.createElement('div');
+            indicator.className = 'typing-indicator';
+            indicator.setAttribute('aria-label', '对方正在输入...');
+            indicator.innerHTML = '<span></span><span></span><span></span>';
+            bubble.appendChild(role);
+            bubble.appendChild(indicator);
+            row.appendChild(bubble);
+            log.appendChild(row);
+            row.scrollIntoView({behavior: 'smooth', block: 'end'});
+            return row;
+        }
+
+        function removeTypingIndicator() {
+            const row = document.getElementById('typing-indicator-row');
+            if (row) row.remove();
+        }
+
         async function sendMessage(event) {
             event.preventDefault();
             if (ended) return;
@@ -1038,8 +1185,22 @@
             }
 
             errorBox.textContent = '';
+            // 立即渲染用户消息并清空输入框
+            const optimisticRow = appendMessage({role: 'user', content});
+            input.value = '';
+            input.style.height = '';
+            input.style.overflowY = 'hidden';
             submit.disabled = true;
             endButton.disabled = true;
+            const typingRow = showTypingIndicator();
+
+            function rollback() {
+                removeTypingIndicator();
+                if (optimisticRow && optimisticRow.parentNode) optimisticRow.remove();
+                input.value = content;
+                input.dispatchEvent(new Event('input'));
+            }
+
             try {
                 const resp = await csrfFetch(messageUrl, {
                     method: 'POST',
@@ -1051,24 +1212,28 @@
                     window.updateGlobalTokenQuota(data.quota);
                 }
                 if (resp.status === 409 && data.summary_url) {
+                    removeTypingIndicator();
                     window.location.href = data.summary_url;
                     return;
                 }
                 if (!resp.ok) {
+                    rollback();
                     errorBox.textContent = data.error || '发送失败，请稍后重试。';
                     if (data.error_code === 'quota_exceeded' && typeof window.openGlobalTokenQuotaModal === 'function') {
                         window.openGlobalTokenQuotaModal();
                     }
                     return;
                 }
+                removeTypingIndicator();
                 applySessionState(data.session);
                 if (data.safety_override || (data.session && data.session.crisis_active)) {
                     showSafetyMode();
                 }
-                (data.messages || []).forEach(appendMessage);
-                input.value = '';
+                // 只追加 assistant 消息，user 消息已在发送前渲染
+                (data.messages || []).filter(m => m.role !== 'user').forEach(appendMessage);
                 scheduleAutoEnd();
             } catch (_) {
+                rollback();
                 errorBox.textContent = '发送失败，请稍后重试。';
             } finally {
                 submit.disabled = false;
@@ -1084,6 +1249,213 @@
         renderStatus(sessionState.status);
         renderDebugPanel(sessionState.debug);
         scheduleAutoEnd();
+    })();
+
+    (function initVoiceInput() {
+        const micBtn = document.getElementById('composer-mic-btn');
+        const micLabel = document.getElementById('composer-mic-label');
+        if (!micBtn) return;
+
+        const AudioCtx = window.AudioContext || window.webkitAudioContext;
+        const supported = !!(
+            navigator.mediaDevices &&
+            typeof navigator.mediaDevices.getUserMedia === 'function' &&
+            typeof MediaRecorder !== 'undefined' &&
+            typeof AudioCtx !== 'undefined' &&
+            typeof OfflineAudioContext !== 'undefined'
+        );
+        if (!supported) {
+            micBtn.hidden = true;
+            return;
+        }
+
+        const input = document.getElementById('message-input');
+        const errorBox = document.getElementById('message-error');
+        let mediaRecorder = null;
+        let audioChunks = [];
+        let isRecording = false;
+        let activeStream = null;
+
+        function setMicState(state) {
+            micBtn.classList.remove('recording', 'processing');
+            micBtn.disabled = false;
+            if (state === 'recording') {
+                micBtn.classList.add('recording');
+                micBtn.setAttribute('aria-label', '停止录音');
+                micBtn.title = '点击停止录音';
+                if (micLabel) micLabel.textContent = '停止';
+            } else if (state === 'processing') {
+                micBtn.classList.add('processing');
+                micBtn.disabled = true;
+                micBtn.setAttribute('aria-label', '识别中');
+                micBtn.title = '识别中…';
+                if (micLabel) micLabel.textContent = '识别中';
+            } else {
+                micBtn.setAttribute('aria-label', '开始语音输入');
+                micBtn.title = '语音输入';
+                if (micLabel) micLabel.textContent = '语音';
+            }
+        }
+
+        function releaseStream() {
+            if (activeStream) {
+                activeStream.getTracks().forEach((t) => t.stop());
+                activeStream = null;
+            }
+        }
+
+        function pickMimeType() {
+            const types = ['audio/webm;codecs=opus', 'audio/webm', 'audio/ogg;codecs=opus', 'audio/mp4'];
+            for (const t of types) {
+                if (MediaRecorder.isTypeSupported(t)) return t;
+            }
+            return '';
+        }
+
+        // ── WAV encoding helpers ─────────────────────────────────────────
+        function encodeMonoWav(samples, sampleRate) {
+            const dataLen = samples.length * 2;
+            const buf = new ArrayBuffer(44 + dataLen);
+            const v = new DataView(buf);
+            function ws(off, s) { for (let i = 0; i < s.length; i++) v.setUint8(off + i, s.charCodeAt(i)); }
+            ws(0, 'RIFF'); v.setUint32(4, 36 + dataLen, true);
+            ws(8, 'WAVE'); ws(12, 'fmt ');
+            v.setUint32(16, 16, true);          // subchunk1 size
+            v.setUint16(20, 1, true);           // PCM
+            v.setUint16(22, 1, true);           // mono
+            v.setUint32(24, sampleRate, true);
+            v.setUint32(28, sampleRate * 2, true);
+            v.setUint16(32, 2, true);           // block align
+            v.setUint16(34, 16, true);          // bits per sample
+            ws(36, 'data'); v.setUint32(40, dataLen, true);
+            for (let i = 0; i < samples.length; i++) {
+                const s = Math.max(-1, Math.min(1, samples[i]));
+                v.setInt16(44 + i * 2, s < 0 ? s * 0x8000 : s * 0x7FFF, true);
+            }
+            return new Blob([buf], { type: 'audio/wav' });
+        }
+
+        async function toWav16k(blob) {
+            const arrayBuffer = await blob.arrayBuffer();
+            const ctx = new AudioCtx();
+            // decodeAudioData callback form for iOS WebKit compatibility
+            const decoded = await new Promise((resolve, reject) => {
+                ctx.decodeAudioData(arrayBuffer, resolve, reject);
+            });
+            ctx.close();
+
+            const TARGET = 16000;
+            const offCtx = new OfflineAudioContext(
+                1,
+                Math.max(1, Math.ceil(decoded.duration * TARGET)),
+                TARGET
+            );
+            const src = offCtx.createBufferSource();
+            src.buffer = decoded;
+            src.connect(offCtx.destination);
+            src.start(0);
+            const rendered = await offCtx.startRendering();
+            return encodeMonoWav(rendered.getChannelData(0), TARGET);
+        }
+
+        // ── Recording flow ───────────────────────────────────────────────
+        async function startRecording() {
+            errorBox.textContent = '';
+            try {
+                activeStream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
+            } catch (_) {
+                errorBox.textContent = '无法访问麦克风，请检查浏览器权限设置后重试。';
+                return;
+            }
+
+            const mimeType = pickMimeType();
+            try {
+                mediaRecorder = mimeType
+                    ? new MediaRecorder(activeStream, { mimeType })
+                    : new MediaRecorder(activeStream);
+            } catch (_) {
+                mediaRecorder = new MediaRecorder(activeStream);
+            }
+
+            audioChunks = [];
+            mediaRecorder.ondataavailable = (e) => {
+                if (e.data && e.data.size > 0) audioChunks.push(e.data);
+            };
+            mediaRecorder.onstop = handleStop;
+            mediaRecorder.start(200);
+            isRecording = true;
+            setMicState('recording');
+        }
+
+        function stopRecording() {
+            if (mediaRecorder && isRecording) {
+                isRecording = false;
+                mediaRecorder.stop();
+                releaseStream();
+            }
+        }
+
+        async function handleStop() {
+            setMicState('processing');
+            if (!audioChunks.length) {
+                setMicState('idle');
+                return;
+            }
+
+            const mimeType = (mediaRecorder && mediaRecorder.mimeType) || 'audio/webm';
+            const rawBlob = new Blob(audioChunks, { type: mimeType });
+            audioChunks = [];
+
+            // Convert to 16kHz mono WAV — required by Volcengine ASR
+            let wavBlob;
+            try {
+                wavBlob = await toWav16k(rawBlob);
+            } catch (e) {
+                errorBox.textContent = '音频处理失败，请重试。';
+                setMicState('idle');
+                return;
+            }
+
+            const fd = new FormData();
+            fd.append('audio', wavBlob, 'voice.wav');
+
+            try {
+                const resp = await csrfFetch('/api/moodpal/asr/transcribe', {
+                    method: 'POST',
+                    body: fd,
+                });
+                let data;
+                try {
+                    data = await resp.json();
+                } catch (_) {
+                    errorBox.textContent = `语音识别失败（HTTP ${resp.status}），请重试。`;
+                    setMicState('idle');
+                    return;
+                }
+                if (!resp.ok || !data.text) {
+                    errorBox.textContent = data.error || '语音识别失败，请重试。';
+                } else {
+                    const cur = (input.value || '').trimEnd();
+                    input.value = cur ? cur + '，' + data.text : data.text;
+                    input.dispatchEvent(new Event('input'));
+                    input.focus();
+                    errorBox.textContent = '';
+                }
+            } catch (_) {
+                errorBox.textContent = '语音识别失败，请检查网络后重试。';
+            } finally {
+                setMicState('idle');
+            }
+        }
+
+        micBtn.addEventListener('click', () => {
+            if (document.getElementById('message-submit').disabled) return;
+            isRecording ? stopRecording() : startRecording();
+        });
+
+        document.addEventListener('visibilitychange', () => {
+            if (document.hidden && isRecording) stopRecording();
+        });
     })();
 </script>
 {% endblock %}

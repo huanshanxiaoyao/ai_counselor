@@ -28,6 +28,9 @@ else:
 # SECURITY WARNING: configure allowed hosts properly!
 ALLOWED_HOSTS = os.getenv('ALLOWED_HOSTS', 'localhost,127.0.0.1').split(',')
 
+_csrf_origins = os.getenv('CSRF_TRUSTED_ORIGINS', '')
+CSRF_TRUSTED_ORIGINS = [o.strip() for o in _csrf_origins.split(',') if o.strip()]
+
 INSTALLED_APPS = [
     'django.contrib.admin',
     'django.contrib.auth',
@@ -157,6 +160,11 @@ LLM_DEFAULT_PROVIDER = os.getenv('LLM_DEFAULT_PROVIDER', 'qwen')
 LLM_TIMEOUT = int(os.getenv('LLM_TIMEOUT', '12'))
 LLM_MAX_RETRIES = int(os.getenv('LLM_MAX_RETRIES', '3'))
 MOODPAL_RUNTIME_MAX_TOKENS = int(os.getenv('MOODPAL_RUNTIME_MAX_TOKENS', '700'))
+
+# Doubao ASR (Volcengine 大模型一句话识别)
+DOUBAO_ASR_APP_ID = os.getenv('DOUBAO_ASR_APP_ID', '')
+DOUBAO_ASR_ACCESS_TOKEN = os.getenv('DOUBAO_ASR_ACCESS_TOKEN', '')
+
 TOKEN_QUOTA_LIMIT = int(
     os.getenv('TOKEN_QUOTA_LIMIT', '100000' if DEBUG else '1000000')
 )

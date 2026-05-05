@@ -56,6 +56,23 @@
     }
     .summary-actions .save { background: #4ecdc4; color: #0f1719; }
     .summary-actions .destroy { background: #ff6f61; color: white; }
+
+    @media (max-width: 720px) {
+        .summary-shell {
+            gap: 12px;
+        }
+        .summary-card {
+            padding: 18px 16px;
+            border-radius: 18px;
+        }
+        .summary-card textarea {
+            min-height: 180px;
+        }
+        .summary-actions button {
+            min-height: 48px;
+            flex: 1 1 140px;
+        }
+    }
 </style>
 {% endblock %}
 

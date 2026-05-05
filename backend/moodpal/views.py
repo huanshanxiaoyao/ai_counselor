@@ -21,6 +21,7 @@ from .services.message_service import (
     serialize_message,
 )
 from .services.model_option_service import (
+    MODEL_SCOPE_ASSISTANT,
     get_default_selected_model,
     get_model_options,
     normalize_selected_model,
@@ -83,9 +84,9 @@ def _log_quota_block(context: str, snapshot: dict, *, session_id: str = ''):
 def _home_context(**kwargs):
     context = {
         'personas': get_persona_catalog(),
-        'llm_options': get_model_options(),
-        'default_selected_model': get_default_selected_model(),
-        'selected_model_value': get_default_selected_model(),
+        'llm_options': get_model_options(scope=MODEL_SCOPE_ASSISTANT),
+        'default_selected_model': get_default_selected_model(scope=MODEL_SCOPE_ASSISTANT),
+        'selected_model_value': get_default_selected_model(scope=MODEL_SCOPE_ASSISTANT),
     }
     context.update(kwargs)
     return context
@@ -110,7 +111,7 @@ class MoodPalHomeView(View):
                 _home_context(
                     form_error='已超过可用 token 配额，请点击顶部 Token 查看并联系管理员获取更多额度。',
                     quota=exc.snapshot,
-                    selected_model_value=normalize_selected_model(selected_model),
+                    selected_model_value=normalize_selected_model(selected_model, scope=MODEL_SCOPE_ASSISTANT),
                 ),
                 status=402,
             )
@@ -128,7 +129,7 @@ class MoodPalHomeView(View):
                     'moodpal/index.html',
                     _home_context(
                         form_error='请先确认隐私契约与边界说明，再开始新会话。',
-                        selected_model_value=normalize_selected_model(selected_model),
+                        selected_model_value=normalize_selected_model(selected_model, scope=MODEL_SCOPE_ASSISTANT),
                     ),
                     status=400,
                 )
@@ -137,7 +138,7 @@ class MoodPalHomeView(View):
                 'moodpal/index.html',
                 _home_context(
                     form_error='请选择一个有效角色后再开始会话。',
-                    selected_model_value=normalize_selected_model(selected_model),
+                    selected_model_value=normalize_selected_model(selected_model, scope=MODEL_SCOPE_ASSISTANT),
                 ),
                 status=400,
             )
@@ -366,3 +367,38 @@ class MoodPalSummaryDestroyApiView(View):
         except ValueError as exc:
             return JsonResponse({'error': str(exc)}, status=409)
         return JsonResponse({'session': serialize_session(session)})
+
+
+class MoodPalASRTranscribeApiView(View):
+    def post(self, request):
+        from .services.asr_service import ASRError, is_asr_configured, transcribe_audio
+
+        if not is_asr_configured():
+            return JsonResponse({'error': 'asr_not_configured'}, status=503)
+
+        audio_file = request.FILES.get('audio')
+        if not audio_file:
+            return JsonResponse({'error': 'no_audio'}, status=400)
+
+        if audio_file.size > 10 * 1024 * 1024:
+            return JsonResponse({'error': 'audio_too_large'}, status=400)
+
+        try:
+            audio_bytes = audio_file.read()
+            mime_type = audio_file.content_type or 'audio/webm'
+            text = transcribe_audio(audio_bytes, mime_type)
+            if not text:
+                return JsonResponse({'error': '未能识别到语音，请重新录制'}, status=422, json_dumps_params={'ensure_ascii': False})
+            return JsonResponse({'text': text}, json_dumps_params={'ensure_ascii': False})
+        except ASRError as exc:
+            error_code = str(exc)
+            logger.warning('MoodPal ASR transcribe failed: %s', error_code)
+            if error_code == 'asr_timeout':
+                return JsonResponse({'error': '语音识别超时，请重试'}, status=504, json_dumps_params={'ensure_ascii': False})
+            return JsonResponse({'error': '语音识别失败，请重试'}, status=500, json_dumps_params={'ensure_ascii': False})
+        except Exception:
+            logger.exception('MoodPal ASR unexpected error')
+            return JsonResponse({'error': '语音识别失败，请重试'}, status=500, json_dumps_params={'ensure_ascii': False})
+        except BaseException:
+            logger.exception('MoodPal ASR BaseException')
+            return JsonResponse({'error': '语音识别失败，请重试'}, status=500, json_dumps_params={'ensure_ascii': False})

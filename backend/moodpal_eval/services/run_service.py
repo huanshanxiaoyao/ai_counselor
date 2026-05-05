@@ -6,7 +6,14 @@ from django.db import transaction
 from django.utils import timezone
 
 from backend.moodpal.models import MoodPalSession
-from backend.moodpal.services.model_option_service import get_default_selected_model, normalize_selected_model
+from backend.moodpal.services.model_option_service import (
+    MODEL_SCOPE_ASSISTANT,
+    MODEL_SCOPE_JUDGE,
+    MODEL_SCOPE_PATIENT,
+    get_default_selected_model,
+    is_selected_model_allowed,
+    normalize_selected_model,
+)
 from backend.moodpal_eval.models import MoodPalEvalCase, MoodPalEvalRun, MoodPalEvalRunItem
 
 MAX_RUN_CASE_COUNT = 20
@@ -66,9 +73,18 @@ def create_run(*, created_by, payload: RunCreateInput) -> MoodPalEvalRun:
             target_persona_id=payload.target_persona_id,
             dataset_split=payload.dataset_split,
             selected_case_count=payload.case_count,
-            patient_model=normalize_selected_model(payload.patient_model or get_default_selected_model()),
-            judge_model=normalize_selected_model(payload.judge_model or get_default_selected_model()),
-            target_model=normalize_selected_model(payload.target_model or get_default_selected_model()),
+            patient_model=normalize_selected_model(
+                payload.patient_model or get_default_selected_model(scope=MODEL_SCOPE_PATIENT),
+                scope=MODEL_SCOPE_PATIENT,
+            ),
+            judge_model=normalize_selected_model(
+                payload.judge_model or get_default_selected_model(scope=MODEL_SCOPE_JUDGE),
+                scope=MODEL_SCOPE_JUDGE,
+            ),
+            target_model=normalize_selected_model(
+                payload.target_model or get_default_selected_model(scope=MODEL_SCOPE_ASSISTANT),
+                scope=MODEL_SCOPE_ASSISTANT,
+            ),
             threshold_score=payload.threshold_score,
             baseline_run=baseline_run,
             max_turns=payload.max_turns,
@@ -178,6 +194,12 @@ def _validate_payload(payload: RunCreateInput):
         raise EvalRunValidationError('master_guide_persona_required')
     if payload.target_mode == MoodPalEvalRun.TargetMode.SINGLE_ROLE and payload.target_persona_id == MoodPalSession.Persona.MASTER_GUIDE:
         raise EvalRunValidationError('single_role_persona_required')
+    if payload.target_model and not is_selected_model_allowed(payload.target_model, scope=MODEL_SCOPE_ASSISTANT):
+        raise EvalRunValidationError('invalid_target_model')
+    if payload.patient_model and not is_selected_model_allowed(payload.patient_model, scope=MODEL_SCOPE_PATIENT):
+        raise EvalRunValidationError('invalid_patient_model')
+    if payload.judge_model and not is_selected_model_allowed(payload.judge_model, scope=MODEL_SCOPE_JUDGE):
+        raise EvalRunValidationError('invalid_judge_model')
 
 
 def _ensure_no_running_run():

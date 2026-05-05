@@ -1,6 +1,11 @@
 # Docker related
 .dockerignore
 docker-compose.override.yml
+caddy/
+caddy-root.crt
+
+# Throwaway ASR debug scripts (contain hardcoded credentials)
+test_asr*.py
 
 # Python
 __pycache__/

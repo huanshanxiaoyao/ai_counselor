@@ -7,7 +7,7 @@ from dataclasses import dataclass, field
 from typing import Any, Optional
 
 from backend.llm import LLMClient
-from backend.moodpal.services.model_option_service import normalize_selected_model
+from backend.moodpal.services.model_option_service import MODEL_SCOPE_PATIENT, normalize_selected_model
 from backend.moodpal.services.session_service import get_persona_config
 
 from .structured_completion_service import complete_json_with_fallback
@@ -315,7 +315,7 @@ def _format_dialogue(messages: list[dict]) -> str:
 
 
 def _resolve_provider_and_model(selected_model: str) -> tuple[str, Optional[str]]:
-    value = normalize_selected_model(selected_model)
+    value = normalize_selected_model(selected_model, scope=MODEL_SCOPE_PATIENT)
     if ':' in value:
         provider_name, model_name = value.split(':', 1)
         return provider_name, model_name.strip() or None

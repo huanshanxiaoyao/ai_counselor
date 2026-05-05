@@ -11,5 +11,6 @@ urlpatterns = [
     path('session/<uuid:session_id>/end', views.MoodPalSessionEndApiView.as_view(), name='session_end'),
     path('session/<uuid:session_id>/summary/save', views.MoodPalSummarySaveApiView.as_view(), name='summary_save'),
     path('session/<uuid:session_id>/summary/destroy', views.MoodPalSummaryDestroyApiView.as_view(), name='summary_destroy'),
+    path('asr/transcribe', views.MoodPalASRTranscribeApiView.as_view(), name='asr_transcribe'),
 ]
 
