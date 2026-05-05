@@ -10,6 +10,25 @@ load_dotenv()
 
 BASE_DIR = Path(__file__).resolve().parent.parent.parent
 
+
+def _split_csv_env(raw_value: str) -> list[str]:
+    return [item.strip() for item in (raw_value or '').split(',') if item.strip()]
+
+
+def _build_csrf_trusted_origins(hosts: list[str], *, debug: bool) -> list[str]:
+    origins: list[str] = []
+    for host in hosts:
+        if not host or host == '*':
+            continue
+        if '://' in host:
+            origins.append(host.rstrip('/'))
+            continue
+
+        origins.append(f'https://{host}')
+        if debug or host in {'localhost', '127.0.0.1', '[::1]'}:
+            origins.append(f'http://{host}')
+    return list(dict.fromkeys(origins))
+
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = os.getenv('DEBUG', 'False').lower() in ('true', '1', 'yes')
 
@@ -26,7 +45,9 @@ else:
         raise RuntimeError("DJANGO_SECRET_KEY environment variable must be set in production")
 
 # SECURITY WARNING: configure allowed hosts properly!
-ALLOWED_HOSTS = os.getenv('ALLOWED_HOSTS', 'localhost,127.0.0.1').split(',')
+ALLOWED_HOSTS = _split_csv_env(os.getenv('ALLOWED_HOSTS', 'localhost,127.0.0.1'))
+CSRF_TRUSTED_ORIGINS = _build_csrf_trusted_origins(ALLOWED_HOSTS, debug=DEBUG)
+SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')
 
 _csrf_origins = os.getenv('CSRF_TRUSTED_ORIGINS', '')
 CSRF_TRUSTED_ORIGINS = [o.strip() for o in _csrf_origins.split(',') if o.strip()]
