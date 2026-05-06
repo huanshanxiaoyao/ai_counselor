@@ -8,7 +8,6 @@ import pytest
 
 from backend.moodpal.humanistic import HumanisticGraph, HumanisticNodeRegistry, HumanisticTechniqueRouter
 from backend.moodpal.humanistic.executor import HumanisticTechniqueExecutor
-from backend.moodpal.humanistic.executor_prompt_config import PROMPT_TEMPLATE_BY_TECHNIQUE
 from backend.moodpal.humanistic.resonance_evaluator import HumanisticResonanceEvaluator
 from backend.moodpal.humanistic.signal_extractor import extract_humanistic_turn_signals
 from backend.moodpal.humanistic.state import make_initial_humanistic_state
@@ -138,6 +137,8 @@ def test_humanistic_alliance_repair_trip_regresses_to_holding():
 def test_humanistic_graph_builds_execution_payload_for_repair_node():
     graph = HumanisticGraph()
     state = make_initial_humanistic_state()
+    state['persona_id'] = 'empathy_sister'
+    state['surface_persona_id'] = 'empathy_sister'
     state['last_user_message'] = '你根本没懂我。'
     state['alliance_rupture_detected'] = True
     state['relational_trust'] = 'weak'
@@ -146,8 +147,8 @@ def test_humanistic_graph_builds_execution_payload_for_repair_node():
 
     assert plan.selection.technique_id == 'hum_exception_alliance_repair'
     assert plan.payload is not None
-    assert '修复刚刚受损的关系' in plan.payload.system_prompt
-    assert '节点退出标准：' in plan.payload.user_prompt
+    assert '共情学姐' in plan.payload.system_prompt
+    assert '你根本没懂我' in plan.payload.user_prompt
 
 
 def test_humanistic_signal_extractor_derives_structured_turn_signals():
@@ -166,6 +167,8 @@ def test_humanistic_signal_extractor_derives_structured_turn_signals():
 def test_humanistic_executor_limits_context_to_template_scope():
     executor = HumanisticTechniqueExecutor()
     state = make_initial_humanistic_state()
+    state['persona_id'] = 'empathy_sister'
+    state['surface_persona_id'] = 'empathy_sister'
     state['last_user_message'] = '别安慰我了，直接告诉我怎么办。'
     state['advice_pull_detected'] = True
     state['openness_level'] = 'guarded'
@@ -174,15 +177,17 @@ def test_humanistic_executor_limits_context_to_template_scope():
 
     payload = executor.build_payload(state, 'hum_boundary_advice_pull')
 
-    assert '节点触发信号：' in payload.user_prompt
-    assert '"advice_pull_detected": true' in payload.user_prompt
-    assert '"self_attack_flag"' not in payload.user_prompt
+    assert '别安慰我了' in payload.user_prompt
+    assert '{' not in payload.user_prompt
+    assert '节点触发信号' not in payload.user_prompt
     assert payload.metadata['prompt_template_id'] == 'hum_boundary_advice_pull'
 
 
-def test_humanistic_executor_includes_signal_summary_block():
+def test_humanistic_executor_user_prompt_contains_last_message():
     executor = HumanisticTechniqueExecutor()
     state = make_initial_humanistic_state()
+    state['persona_id'] = 'empathy_sister'
+    state['surface_persona_id'] = 'empathy_sister'
     state.update(
         {
             'last_user_message': '你根本没懂我。',
@@ -196,14 +201,16 @@ def test_humanistic_executor_includes_signal_summary_block():
 
     payload = executor.build_payload(state, 'hum_exception_alliance_repair')
 
-    assert '状态信号摘要：' in payload.user_prompt
-    assert '未满足需要候选：被理解' in payload.user_prompt
-    assert '当前异常标记：alliance_rupture' in payload.user_prompt
+    assert '你根本没懂我' in payload.user_prompt
+    assert '状态信号摘要' not in payload.user_prompt
+    assert '{' not in payload.user_prompt
 
 
-def test_all_humanistic_nodes_have_prompt_templates():
+def test_all_humanistic_nodes_have_awareness_hints():
+    from backend.moodpal.awareness_hints import AWARENESS_HINTS
     registry_ids = {node.node_id for node in HumanisticNodeRegistry().all_nodes()}
-    assert set(PROMPT_TEMPLATE_BY_TECHNIQUE.keys()) == registry_ids
+    for node_id in registry_ids:
+        assert node_id in AWARENESS_HINTS, f'Missing awareness hint for {node_id}'
 
 
 @pytest.mark.django_db
