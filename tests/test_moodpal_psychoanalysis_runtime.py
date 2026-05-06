@@ -7,16 +7,17 @@ import pytest
 from backend.moodpal.models import MoodPalSession
 from backend.moodpal.psychoanalysis import PsychoanalysisGraph, PsychoanalysisNodeRegistry
 from backend.moodpal.psychoanalysis.executor import PsychoanalysisTechniqueExecutor
-from backend.moodpal.psychoanalysis.executor_prompt_config import PROMPT_TEMPLATE_BY_TECHNIQUE
 from backend.moodpal.psychoanalysis.insight_evaluator import PsychoanalysisInsightEvaluator
 from backend.moodpal.psychoanalysis.signal_extractor import extract_psychoanalysis_turn_signals
 from backend.moodpal.psychoanalysis.state import make_initial_psychoanalysis_state
 from backend.moodpal.services.psychoanalysis_runtime_service import run_psychoanalysis_turn
 
 
-def test_all_psychoanalysis_nodes_have_prompt_templates():
+def test_all_psychoanalysis_nodes_have_awareness_hints():
+    from backend.moodpal.awareness_hints import AWARENESS_HINTS
     registry_ids = {node.node_id for node in PsychoanalysisNodeRegistry().all_nodes()}
-    assert set(PROMPT_TEMPLATE_BY_TECHNIQUE.keys()) == registry_ids
+    for node_id in registry_ids:
+        assert node_id in AWARENESS_HINTS, f'Missing awareness hint for {node_id}'
 
 
 def test_psychoanalysis_signal_extractor_derives_dynamic_signals_without_llm():
@@ -40,21 +41,13 @@ def test_psychoanalysis_signal_extractor_derives_dynamic_signals_without_llm():
     assert patch['advice_pull_detected'] is False
 
 
-def test_psychoanalysis_executor_includes_pattern_memory_summary_and_dynamic_block():
+def test_psychoanalysis_executor_user_prompt_contains_last_message():
     executor = PsychoanalysisTechniqueExecutor()
-    state = make_initial_psychoanalysis_state(
-        recalled_pattern_memory=[
-            {
-                'repetition_themes': ['authority_tension'],
-                'defense_patterns': ['withdrawal'],
-                'relational_pull': ['testing_authority'],
-                'working_hypotheses': ['在被评价场景里会先收紧'],
-            }
-        ]
-    )
+    state = make_initial_psychoanalysis_state()
     state.update(
         {
             'persona_id': 'insight_mentor',
+            'surface_persona_id': 'insight_mentor',
             'last_user_message': '你这么说，我就更不想讲了。',
             'here_and_now_triggered': True,
             'relational_pull': 'testing_authority',
@@ -65,9 +58,10 @@ def test_psychoanalysis_executor_includes_pattern_memory_summary_and_dynamic_blo
 
     payload = executor.build_payload(state, 'psa_relational_here_now')
 
-    assert '动力学信号摘要：' in payload.user_prompt
-    assert '召回的脱敏模式记忆：' in payload.user_prompt
-    assert 'testing_authority' in payload.user_prompt
+    assert '你这么说，我就更不想讲了' in payload.user_prompt
+    assert '动力学信号摘要' not in payload.user_prompt
+    assert '召回的脱敏模式记忆' not in payload.user_prompt
+    assert '{' not in payload.user_prompt
     assert payload.metadata['prompt_template_id'] == 'psa_relational_here_now'
 
 
@@ -104,6 +98,7 @@ def test_psychoanalysis_graph_builds_execution_payload_for_relational_node():
     graph = PsychoanalysisGraph()
     state = make_initial_psychoanalysis_state()
     state['persona_id'] = 'insight_mentor'
+    state['surface_persona_id'] = 'insight_mentor'
     state['last_user_message'] = '你这么说，我就更不想讲了。'
     state['here_and_now_triggered'] = True
     state['alliance_strength'] = 'medium'
@@ -112,8 +107,8 @@ def test_psychoanalysis_graph_builds_execution_payload_for_relational_node():
 
     assert plan.selection.technique_id == 'psa_relational_here_now'
     assert plan.payload is not None
-    assert '只处理此刻互动里的收紧' in plan.payload.system_prompt
-    assert '节点退出标准：' in plan.payload.user_prompt
+    assert '心理学前辈' in plan.payload.system_prompt
+    assert '你这么说，我就更不想讲了' in plan.payload.user_prompt
 
 
 @pytest.mark.django_db
