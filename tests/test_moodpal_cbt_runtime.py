@@ -310,6 +310,8 @@ def test_exit_evaluator_uses_jump_to_exception_for_imagery_identification_trip()
 def test_cbt_graph_builds_execution_payload_for_selected_node():
     graph = CBTGraph()
     state = make_initial_cbt_state()
+    state['persona_id'] = 'logic_brother'
+    state['surface_persona_id'] = 'logic_brother'
     state['agenda_topic'] = '工作失误'
     state['agenda_locked'] = True
     state['last_user_message'] = '我想不起来当时脑子里在想什么。'
@@ -318,13 +320,15 @@ def test_cbt_graph_builds_execution_payload_for_selected_node():
 
     assert plan.selection.technique_id == 'cbt_cog_identify_at_imagery'
     assert plan.payload is not None
-    assert '画面重现' in plan.payload.user_prompt
-    assert '一次只推进一步' in plan.payload.system_prompt
+    assert '工作失误' in plan.payload.user_prompt
+    assert '逻辑哥哥' in plan.payload.system_prompt
 
 
 def test_cbt_executor_builds_node_specific_prompt_template():
     executor = CBTTechniqueExecutor()
     state = make_initial_cbt_state()
+    state['persona_id'] = 'logic_brother'
+    state['surface_persona_id'] = 'logic_brother'
     state['agenda_topic'] = '给同事发消息'
     state['agenda_locked'] = True
     state['captured_automatic_thought'] = '如果我主动发消息，他肯定会嫌我烦。'
@@ -334,14 +338,12 @@ def test_cbt_executor_builds_node_specific_prompt_template():
 
     payload = executor.build_payload(state, 'cbt_beh_experiment')
 
-    assert '本节点目标：把用户的负面预测转成一个小型、可验证的行为实验。' in payload.system_prompt
-    assert '本轮聚焦：只明确实验动作、时间点和观察指标。' in payload.system_prompt
-    assert '避免事项：' in payload.system_prompt
-    assert '节点触发信号：' in payload.user_prompt
-    assert '参考风格示例：' in payload.user_prompt
-    assert '"captured_automatic_thought": "如果我主动发消息，他肯定会嫌我烦。"' in payload.user_prompt
+    assert '逻辑哥哥' in payload.system_prompt
+    assert '节点触发信号' not in payload.system_prompt
+    assert '严格按' not in payload.user_prompt
+    assert '我一想到要发消息就很慌' in payload.user_prompt
     assert payload.metadata['prompt_template_id'] == 'cbt_beh_experiment'
-    assert 'experiment_plan' in payload.metadata['relevant_context_keys']
+    assert payload.metadata['node_name']
 
 
 def test_cbt_executor_limits_context_to_template_scope():
@@ -354,9 +356,9 @@ def test_cbt_executor_limits_context_to_template_scope():
 
     payload = executor.build_payload(state, 'cbt_exception_alliance_rupture')
 
-    assert '"alliance_rupture_detected": true' in payload.user_prompt
-    assert '"alliance_strength": "weak"' in payload.user_prompt
-    assert '"homework_candidate"' not in payload.user_prompt
+    assert '你根本不懂' in payload.user_prompt
+    assert '{' not in payload.user_prompt
+    assert '节点触发信号' not in payload.user_prompt
 
 
 @pytest.mark.django_db
