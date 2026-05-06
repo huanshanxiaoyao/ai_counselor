@@ -182,6 +182,53 @@ class LLMClient:
             f"(provider={self.provider.name}, model={resolved_model}): {last_error}"
         )
 
+    def complete_with_history(
+        self,
+        messages: list[dict],
+        system_prompt: Optional[str] = None,
+        model: Optional[str] = None,
+    ) -> CompletionResult:
+        resolved_model = model or self.provider.default_model
+        last_error: Optional[Exception] = None
+        for attempt in range(self.max_retries):
+            try:
+                start_time = time.time()
+                usage, text, resp_model = self._client.complete_with_history(
+                    messages=messages,
+                    system_prompt=system_prompt,
+                    model=resolved_model,
+                )
+                elapsed = time.time() - start_time
+                result = CompletionResult(
+                    text=text,
+                    model=resp_model or resolved_model,
+                    usage=usage,
+                    provider_name=self.provider.name,
+                    elapsed_seconds=round(elapsed, 3),
+                )
+                logger.info(
+                    f"LLM history call: provider={self.provider.name} model={result.model} "
+                    f"tokens={usage.total_tokens} ({usage.prompt_tokens}+{usage.completion_tokens}) "
+                    f"time={result.elapsed_seconds}s"
+                )
+                return result
+            except LLMTimeoutError as e:
+                last_error = e
+                if attempt == self.max_retries - 1:
+                    raise
+                time.sleep(2 ** attempt)
+            except LLMAPIError as e:
+                last_error = e
+                if e.status_code in (400, 401, 403, 404):
+                    raise
+                if attempt == self.max_retries - 1:
+                    raise
+                time.sleep(2 ** attempt)
+        raise LLMMaxRetriesExceededError(
+            f"LLM history call failed after {self.max_retries} attempts "
+            f"(provider={self.provider.name}, model={resolved_model}): {last_error}"
+        )
+
 
 class OpenAIBackend:
     """OpenAI-compatible API backend."""
@@ -226,6 +273,34 @@ class OpenAIBackend:
         except openai.APIStatusError as e:
             raise LLMAPIError(str(e), status_code=e.status_code) from e
 
+        usage = TokenUsage(
+            prompt_tokens=response.usage.prompt_tokens,
+            completion_tokens=response.usage.completion_tokens,
+            total_tokens=response.usage.total_tokens,
+        )
+        return usage, response.choices[0].message.content, response.model
+
+    def complete_with_history(
+        self,
+        messages: list[dict],
+        system_prompt: Optional[str] = None,
+        model: Optional[str] = None,
+    ) -> tuple[TokenUsage, str, str]:
+        all_messages: list[dict] = []
+        if system_prompt:
+            all_messages.append({"role": "system", "content": system_prompt})
+        all_messages.extend(messages)
+        try:
+            response = self._client.chat.completions.create(
+                model=model or self.provider.default_model,
+                messages=all_messages,
+            )
+        except openai.APITimeoutError as e:
+            raise LLMTimeoutError(str(e)) from e
+        except openai.APIConnectionError as e:
+            raise LLMTimeoutError(str(e)) from e
+        except openai.APIStatusError as e:
+            raise LLMAPIError(str(e), status_code=e.status_code) from e
         usage = TokenUsage(
             prompt_tokens=response.usage.prompt_tokens,
             completion_tokens=response.usage.completion_tokens,
@@ -285,6 +360,35 @@ class AnthropicBackend:
             if isinstance(block, TextBlock):
                 text_parts.append(block.text)
 
+        usage = TokenUsage(
+            prompt_tokens=response.usage.input_tokens,
+            completion_tokens=response.usage.output_tokens,
+            total_tokens=response.usage.input_tokens + response.usage.output_tokens,
+        )
+        return usage, "\n".join(text_parts) if text_parts else "", response.model
+
+    def complete_with_history(
+        self,
+        messages: list[dict],
+        system_prompt: Optional[str] = None,
+        model: Optional[str] = None,
+    ) -> tuple[TokenUsage, str, str]:
+        params: dict = {
+            "model": model or self.provider.default_model,
+            "messages": messages,
+            "max_tokens": 1024,
+        }
+        if system_prompt:
+            params["system"] = system_prompt
+        try:
+            response = self._client.messages.create(**params)
+        except anthropic.APITimeoutError as e:
+            raise LLMTimeoutError(str(e)) from e
+        except anthropic.APIConnectionError as e:
+            raise LLMTimeoutError(str(e)) from e
+        except anthropic.APIStatusError as e:
+            raise LLMAPIError(str(e), status_code=e.status_code) from e
+        text_parts = [block.text for block in response.content if isinstance(block, TextBlock)]
         usage = TokenUsage(
             prompt_tokens=response.usage.input_tokens,
             completion_tokens=response.usage.output_tokens,
