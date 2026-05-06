@@ -137,6 +137,8 @@ def test_psychoanalysis_router_regresses_to_containment_on_fallback_signal():
 def test_psychoanalysis_graph_returns_closing_node_for_wrap_up_stage():
     graph = PsychoanalysisGraph()
     state = make_initial_psychoanalysis_state()
+    state['persona_id'] = 'insight_mentor'
+    state['surface_persona_id'] = 'insight_mentor'
     state['current_stage'] = 'wrap_up'
     state['working_hypothesis'] = '一感觉到别人不高兴，就会先把自己收回去'
 
@@ -145,4 +147,4 @@ def test_psychoanalysis_graph_returns_closing_node_for_wrap_up_stage():
     assert plan.selection.track == 'closing'
     assert plan.selection.technique_id == 'psa_reflective_close'
     assert plan.payload is not None
-    assert '只留下一个轻量观察锚点' in plan.payload.system_prompt
+    assert '心理学前辈' in plan.payload.system_prompt
