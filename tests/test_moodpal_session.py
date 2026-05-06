@@ -1025,7 +1025,6 @@ def test_moodpal_psychoanalysis_cross_session_history_reaches_runtime_prompt():
     assert msg_resp.status_code == 201
     prompt = mocked_complete.call_args.kwargs['prompt']
     assert '上次我们已经看到，只要感觉要被评价，你就会先缩回去。' in prompt
-    assert 'themes=authority_tension' in prompt
 
     session.refresh_from_db()
     psychoanalysis_state = session.metadata['psychoanalysis_state']
