@@ -948,6 +948,16 @@
                     <div class="debug-value" id="debug-memory-recall">0</div>
                 </div>
             </div>
+            <div id="debug-prompts" style="display:none;margin-top:12px;">
+                <details style="margin-bottom:8px;">
+                    <summary style="cursor:pointer;font-size:12px;font-weight:600;color:#6b7280;letter-spacing:.05em;text-transform:uppercase;">System Prompt</summary>
+                    <pre class="debug-json" id="debug-system-prompt" style="margin-top:6px;white-space:pre-wrap;word-break:break-word;"></pre>
+                </details>
+                <details>
+                    <summary style="cursor:pointer;font-size:12px;font-weight:600;color:#6b7280;letter-spacing:.05em;text-transform:uppercase;">User Prompt (context)</summary>
+                    <pre class="debug-json" id="debug-user-prompt" style="margin-top:6px;white-space:pre-wrap;word-break:break-word;"></pre>
+                </details>
+            </div>
             <pre class="debug-json" id="debug-json"></pre>
         </div>
     </details>
@@ -1000,6 +1010,9 @@
         const debugLastSummary = document.getElementById('debug-last-summary');
         const debugMemoryRecall = document.getElementById('debug-memory-recall');
         const debugJson = document.getElementById('debug-json');
+        const debugPrompts = document.getElementById('debug-prompts');
+        const debugSystemPrompt = document.getElementById('debug-system-prompt');
+        const debugUserPrompt = document.getElementById('debug-user-prompt');
         let timer = null;
         let ended = false;
 
@@ -1139,6 +1152,15 @@
             }
             debugMemoryRecall.textContent = String(debug.recalled_pattern_memory_count || 0);
             debugJson.textContent = JSON.stringify(debug, null, 2);
+            const sysPrompt = debug.last_system_prompt || '';
+            const userPrompt = debug.last_user_prompt || '';
+            if (sysPrompt || userPrompt) {
+                debugPrompts.style.display = 'block';
+                debugSystemPrompt.textContent = sysPrompt;
+                debugUserPrompt.textContent = userPrompt;
+            } else {
+                debugPrompts.style.display = 'none';
+            }
         }
 
         function scheduleAutoEnd() {

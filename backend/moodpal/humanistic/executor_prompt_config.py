@@ -16,7 +16,7 @@ class TechniquePromptTemplate:
 
 COMMON_RESPONSE_CONTRACT = (
     '只输出一轮对用户可见的自然中文回复。',
-    '优先使用短句、慢节奏和单问题推进。',
+    '回复不超过三句话（不含结尾问句），优先短句。',
     '不暴露后台状态、节点名、schema 或状态机。',
 )
 

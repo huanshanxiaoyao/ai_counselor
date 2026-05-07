@@ -305,7 +305,7 @@ def destroy_summary(session: MoodPalSession) -> MoodPalSession:
 
 
 def _serialize_debug_payload(session: MoodPalSession) -> dict | None:
-    if not settings.DEBUG:
+    if not settings.MOODPAL_DEBUG_UI:
         return None
 
     metadata = dict(session.metadata or {})
@@ -338,9 +338,6 @@ def _serialize_debug_payload(session: MoodPalSession) -> dict | None:
     else:
         runtime_state = {}
 
-    if session.persona_id not in [MoodPalSession.Persona.INSIGHT_MENTOR, MoodPalSession.Persona.MASTER_GUIDE] and not runtime_state and not last_summary:
-        return None
-
     technique_trace = list(runtime_state.get('technique_trace') or [])
     route_trace = list(runtime_state.get('route_trace') or [])
     payload = {
@@ -368,6 +365,13 @@ def _serialize_debug_payload(session: MoodPalSession) -> dict | None:
         'runtime_state_key': runtime_state_key,
         'runtime_state': runtime_state,
     }
+    last_msg = session.messages.filter(role='assistant').order_by('-created_at').first()
+    if last_msg and last_msg.metadata:
+        payload['last_system_prompt'] = last_msg.metadata.get('debug_system_prompt', '')
+        payload['last_user_prompt'] = last_msg.metadata.get('debug_user_prompt', '')
+    else:
+        payload['last_system_prompt'] = ''
+        payload['last_user_prompt'] = ''
     return payload
 
 

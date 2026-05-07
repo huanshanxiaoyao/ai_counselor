@@ -31,6 +31,7 @@ def _build_csrf_trusted_origins(hosts: list[str], *, debug: bool) -> list[str]:
 
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = os.getenv('DEBUG', 'False').lower() in ('true', '1', 'yes')
+MOODPAL_DEBUG_UI = os.getenv('MOODPAL_DEBUG_UI', 'False').lower() in ('true', '1', 'yes') or DEBUG
 
 # SECURITY WARNING: keep the secret key used in production secret!
 # In production, DJANGO_SECRET_KEY environment variable MUST be set.

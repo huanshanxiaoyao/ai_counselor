@@ -21,6 +21,7 @@ class ConversationTurnResult:
     provider: str
     model: str
     usage: dict
+    system_prompt: str = ''
     used_fallback: bool = False
 
 
@@ -63,6 +64,7 @@ def execute_conversation_turn(
                 'completion_tokens': result.usage.completion_tokens,
                 'total_tokens': result.usage.total_tokens,
             },
+            system_prompt=system_prompt,
         )
     except Exception:
         logger.exception(
@@ -75,6 +77,7 @@ def execute_conversation_turn(
             provider=provider_name,
             model=model_name or '',
             usage={'prompt_tokens': 0, 'completion_tokens': 0, 'total_tokens': 0},
+            system_prompt=system_prompt,
             used_fallback=True,
         )
 

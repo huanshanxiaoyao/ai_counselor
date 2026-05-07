@@ -81,8 +81,11 @@ def run_master_guide_turn(*, session, history_messages: list) -> MasterGuideRunt
         'json_mode_degraded': False,
         'completion_mode': 'chat' if not result.used_fallback else 'rule_fallback',
         'llm_error_type': '',
-        'debug_system_prompt': '',
-        'debug_user_prompt': '',
+        'debug_system_prompt': result.system_prompt,
+        'debug_user_prompt': next(
+            (m.get('content', '') for m in reversed(history_messages) if m.get('role') == 'user'),
+            '',
+        ),
     }
 
     return MasterGuideRuntimeTurnResult(
