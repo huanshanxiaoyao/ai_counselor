@@ -1,0 +1,1 @@
+# MoodPal analytics views
