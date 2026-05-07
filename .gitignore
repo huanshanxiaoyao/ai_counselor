@@ -36,6 +36,9 @@ env/
 # Claude Code local settings (machine-specific)
 .claude/
 
+# Git worktrees
+.worktrees/
+
 # System files
 .DS_Store
 Thumbs.db
