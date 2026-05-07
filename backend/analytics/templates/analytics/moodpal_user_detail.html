@@ -1,0 +1,223 @@
+{% extends "admin/base_site.html" %}
+
+{% block extrahead %}
+{{ block.super }}
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<style>
+.info-section { background: #fff; border: 1px solid #ddd; border-radius: 6px; padding: 16px; margin-bottom: 20px; }
+.info-section h3 { margin: 0 0 12px 0; font-size: 14px; color: #333; border-bottom: 1px solid #eee; padding-bottom: 8px; }
+.info-grid { display: flex; gap: 32px; flex-wrap: wrap; }
+.info-item .label { font-size: 11px; color: #888; margin-bottom: 2px; }
+.info-item .value { font-size: 14px; color: #333; }
+.card-row { display: flex; gap: 12px; flex-wrap: wrap; margin-bottom: 20px; }
+.card { flex: 1; min-width: 100px; background: #fff; border: 1px solid #ddd; border-radius: 6px; padding: 12px 16px; text-align: center; }
+.card .label { font-size: 11px; color: #888; margin-bottom: 4px; }
+.card .value { font-size: 22px; font-weight: bold; color: #333; }
+.chart-wrap { background: #fff; border: 1px solid #ddd; border-radius: 6px; padding: 16px; margin-bottom: 20px; }
+.chart-wrap h3 { margin: 0 0 12px 0; font-size: 14px; color: #444; }
+table.data-table { width: 100%; border-collapse: collapse; background: #fff; }
+table.data-table th, table.data-table td { padding: 8px 12px; border-bottom: 1px solid #eee; font-size: 13px; }
+table.data-table th { background: #f8f8f8; font-weight: 600; }
+.badge { display: inline-block; padding: 2px 8px; border-radius: 10px; font-size: 11px; }
+.badge-registered { background: #dff0d8; color: #3c763d; }
+.badge-anon { background: #f5f5f5; color: #888; }
+.crisis-yes { color: #c0392b; font-weight: 600; }
+.crisis-no { color: #888; }
+.pagination { margin-top: 12px; display: flex; gap: 8px; align-items: center; font-size: 13px; }
+.pagination a, .pagination span { padding: 4px 10px; border: 1px solid #ddd; border-radius: 4px; text-decoration: none; color: #333; }
+.pagination .current { background: #447e9b; color: #fff; border-color: #447e9b; }
+.back-link { margin-bottom: 12px; display: inline-block; font-size: 13px; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div id="content-main">
+
+  <a class="back-link" href="../">← 返回用户列表</a>
+
+  <div class="info-section">
+    <h3>基本信息</h3>
+    <div class="info-grid">
+      <div class="info-item">
+        <div class="label">用户标识</div>
+        <div class="value">{{ subject_display }}</div>
+      </div>
+      <div class="info-item">
+        <div class="label">账号状态</div>
+        <div class="value">
+          {% if basic.is_registered %}
+            <span class="badge badge-registered">注册</span>
+            {% if basic.username %} &nbsp;{{ basic.username }}{% endif %}
+          {% else %}
+            <span class="badge badge-anon">匿名</span>
+          {% endif %}
+        </div>
+      </div>
+      <div class="info-item">
+        <div class="label">首次使用</div>
+        <div class="value">{{ basic.first_seen|date:"Y-m-d H:i"|default:"—" }}</div>
+      </div>
+      <div class="info-item">
+        <div class="label">最近活跃</div>
+        <div class="value">{{ basic.last_active|date:"Y-m-d H:i"|default:"—" }}</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="card-row">
+    <div class="card">
+      <div class="label">总会话</div>
+      <div class="value">{{ cumulative.total_sessions }}</div>
+    </div>
+    <div class="card">
+      <div class="label">已完成</div>
+      <div class="value">{{ cumulative.completed_sessions }}</div>
+    </div>
+    <div class="card">
+      <div class="label">超时退出</div>
+      <div class="value">{{ cumulative.timeout_sessions }}</div>
+    </div>
+    <div class="card">
+      <div class="label">危机触发</div>
+      <div class="value">{{ cumulative.crisis_total }}</div>
+    </div>
+    <div class="card">
+      <div class="label">摘要保存</div>
+      <div class="value">{{ cumulative.summary_saved }}</div>
+    </div>
+    <div class="card">
+      <div class="label">摘要销毁</div>
+      <div class="value">{{ cumulative.summary_destroyed }}</div>
+    </div>
+    <div class="card">
+      <div class="label">平均时长(分)</div>
+      <div class="value">{{ cumulative.avg_duration_minutes|floatformat:1 }}</div>
+    </div>
+  </div>
+
+  <div class="chart-wrap">
+    <h3>Persona 使用分布</h3>
+    <canvas id="personaChart" height="60"></canvas>
+  </div>
+
+  <div class="info-section">
+    <h3>近30天数据</h3>
+    <table class="data-table">
+      <thead>
+        <tr>
+          <th>日期</th>
+          <th>会话数</th>
+          <th>平均时长(分)</th>
+          <th>Persona 选择</th>
+          <th>危机次数</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for row in daily %}
+        <tr>
+          <td>{{ row.date }}</td>
+          <td>{{ row.session_count }}</td>
+          <td>{{ row.avg_duration_minutes|floatformat:1 }}</td>
+          <td>
+            {% for pid in row.personas %}
+              {% if pid == 'master_guide' %}全能主理人
+              {% elif pid == 'logic_brother' %}逻辑派的邻家哥哥
+              {% elif pid == 'empathy_sister' %}共情派的知心学姐
+              {% elif pid == 'insight_mentor' %}深挖派的心理学前辈
+              {% else %}{{ pid }}
+              {% endif %}
+              {% if not forloop.last %}、{% endif %}
+            {% empty %}—
+            {% endfor %}
+          </td>
+          <td>{{ row.crisis_count }}</td>
+        </tr>
+        {% empty %}
+        <tr><td colspan="5" style="text-align:center;color:#999;">暂无近30天数据</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+
+  <div class="info-section">
+    <h3>会话流水</h3>
+    <table class="data-table">
+      <thead>
+        <tr>
+          <th>开始时间</th>
+          <th>Persona</th>
+          <th>时长</th>
+          <th>轮次</th>
+          <th>结束方式</th>
+          <th>摘要处理</th>
+          <th>危机触发</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for s in sessions %}
+        <tr>
+          <td>{{ s.activated_at|date:"Y-m-d H:i"|default:"—" }}</td>
+          <td>
+            {% if s.persona_id == 'master_guide' %}全能主理人
+            {% elif s.persona_id == 'logic_brother' %}逻辑派的邻家哥哥
+            {% elif s.persona_id == 'empathy_sister' %}共情派的知心学姐
+            {% elif s.persona_id == 'insight_mentor' %}深挖派的心理学前辈
+            {% else %}{{ s.persona_id }}
+            {% endif %}
+          </td>
+          <td>
+            {% if s.duration_minutes is not None %}{{ s.duration_minutes|floatformat:1 }}分钟{% else %}—{% endif %}
+          </td>
+          <td>{{ s.rounds }}</td>
+          <td>
+            {% if s.close_reason == 'user_ended' %}主动结束
+            {% elif s.close_reason == 'idle_timeout' %}超时退出
+            {% else %}—
+            {% endif %}
+          </td>
+          <td>
+            {% if s.summary_action == 'saved' %}已保存
+            {% elif s.summary_action == 'destroyed' %}已销毁
+            {% else %}未处理
+            {% endif %}
+          </td>
+          <td>
+            {% if s.had_crisis %}<span class="crisis-yes">是</span>{% else %}<span class="crisis-no">否</span>{% endif %}
+          </td>
+        </tr>
+        {% empty %}
+        <tr><td colspan="7" style="text-align:center;color:#999;">暂无会话记录</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+
+    {% if session_total_pages > 1 %}
+    <div class="pagination">
+      {% if session_page > 1 %}
+        <a href="?session_page={{ session_page|add:"-1" }}">上一页</a>
+      {% endif %}
+      <span class="current">第 {{ session_page }} / {{ session_total_pages }} 页</span>
+      {% if session_page < session_total_pages %}
+        <a href="?session_page={{ session_page|add:"1" }}">下一页</a>
+      {% endif %}
+    </div>
+    {% endif %}
+  </div>
+
+</div>
+
+<script>
+new Chart(document.getElementById('personaChart'), {
+  type: 'bar',
+  data: {
+    labels: {{ persona_labels|safe }},
+    datasets: [{
+      label: '累计会话数',
+      data: {{ persona_values|safe }},
+      backgroundColor: ['#447e9b','#e9573f','#5cb85c','#f0ad4e']
+    }]
+  },
+  options: { responsive: true, plugins: { legend: { display: false } } }
+});
+</script>
+{% endblock %}

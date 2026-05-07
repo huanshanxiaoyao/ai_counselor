@@ -1,0 +1,88 @@
+{% extends "admin/base_site.html" %}
+
+{% block extrahead %}
+{{ block.super }}
+<style>
+.analytics-summary { margin-bottom: 16px; color: #555; font-size: 13px; }
+table.users-table { width: 100%; border-collapse: collapse; background: #fff; }
+table.users-table th, table.users-table td { padding: 9px 12px; border-bottom: 1px solid #eee; font-size: 13px; }
+table.users-table th { background: #f8f8f8; font-weight: 600; white-space: nowrap; }
+table.users-table th a { color: #333; text-decoration: none; }
+table.users-table th a:hover { text-decoration: underline; }
+table.users-table tr:hover td { background: #f5f9fc; }
+.badge { display: inline-block; padding: 2px 8px; border-radius: 10px; font-size: 11px; }
+.badge-registered { background: #dff0d8; color: #3c763d; }
+.badge-anon { background: #f5f5f5; color: #888; }
+.pagination { margin-top: 16px; display: flex; gap: 8px; align-items: center; font-size: 13px; }
+.pagination a, .pagination span { padding: 4px 10px; border: 1px solid #ddd; border-radius: 4px; text-decoration: none; color: #333; }
+.pagination .current { background: #447e9b; color: #fff; border-color: #447e9b; }
+.pagination a:hover { background: #f0f0f0; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div id="content-main">
+
+  <div class="analytics-summary">共 <strong>{{ total }}</strong> 个用户</div>
+
+  <table class="users-table">
+    <thead>
+      <tr>
+        <th>用户标识（脱敏）</th>
+        <th>账号状态</th>
+        <th>
+          {% if order_by == '-session_count' %}
+            <a href="?order_by=session_count&page=1">累计会话数 ▼</a>
+          {% elif order_by == 'session_count' %}
+            <a href="?order_by=-session_count&page=1">累计会话数 ▲</a>
+          {% else %}
+            <a href="?order_by=-session_count&page=1">累计会话数</a>
+          {% endif %}
+        </th>
+        <th>首次使用</th>
+        <th>
+          {% if order_by == '-last_active' %}
+            <a href="?order_by=last_active&page=1">最近活跃 ▼</a>
+          {% elif order_by == 'last_active' %}
+            <a href="?order_by=-last_active&page=1">最近活跃 ▲</a>
+          {% else %}
+            <a href="?order_by=-last_active&page=1">最近活跃</a>
+          {% endif %}
+        </th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for row in rows %}
+      <tr>
+        <td><a href="../user/{{ row.subject_key_raw }}/">{{ row.usage_subject }}</a></td>
+        <td>
+          {% if row.is_registered %}
+            <span class="badge badge-registered">注册</span>
+          {% else %}
+            <span class="badge badge-anon">匿名</span>
+          {% endif %}
+        </td>
+        <td>{{ row.session_count }}</td>
+        <td>{{ row.first_seen|date:"Y-m-d H:i" }}</td>
+        <td>{{ row.last_active|date:"Y-m-d H:i" }}</td>
+      </tr>
+      {% empty %}
+      <tr><td colspan="5" style="text-align:center;color:#999;padding:24px;">暂无数据</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+
+  {% if total_pages > 1 %}
+  <div class="pagination">
+    {% if page > 1 %}
+      <a href="?order_by={{ order_by }}&page={{ page|add:"-1" }}">上一页</a>
+    {% endif %}
+    <span class="current">第 {{ page }} / {{ total_pages }} 页</span>
+    {% if page < total_pages %}
+      <a href="?order_by={{ order_by }}&page={{ page|add:"1" }}">下一页</a>
+    {% endif %}
+  </div>
+  {% endif %}
+
+</div>
+{% endblock %}

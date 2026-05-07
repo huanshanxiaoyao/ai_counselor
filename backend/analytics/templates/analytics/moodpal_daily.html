@@ -1,0 +1,141 @@
+{% extends "admin/base_site.html" %}
+
+{% block extrahead %}
+{{ block.super }}
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<style>
+.analytics-toolbar { margin-bottom: 16px; }
+.analytics-toolbar a { margin-right: 8px; padding: 4px 12px; border: 1px solid #ccc; border-radius: 4px; text-decoration: none; color: #333; }
+.analytics-toolbar a.active { background: #447e9b; color: #fff; border-color: #447e9b; }
+.card-row { display: flex; gap: 16px; margin-bottom: 24px; }
+.card { flex: 1; background: #fff; border: 1px solid #ddd; border-radius: 6px; padding: 16px; text-align: center; }
+.card .label { font-size: 12px; color: #666; margin-bottom: 4px; }
+.card .value { font-size: 28px; font-weight: bold; color: #333; }
+.chart-wrap { background: #fff; border: 1px solid #ddd; border-radius: 6px; padding: 16px; margin-bottom: 24px; }
+.chart-wrap h3 { margin: 0 0 12px 0; font-size: 14px; color: #444; }
+table.stats-table { width: 100%; border-collapse: collapse; background: #fff; }
+table.stats-table th, table.stats-table td { padding: 8px 12px; border-bottom: 1px solid #eee; font-size: 13px; text-align: right; }
+table.stats-table th { background: #f8f8f8; font-weight: 600; text-align: right; }
+table.stats-table th:first-child, table.stats-table td:first-child { text-align: left; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div id="content-main">
+
+  <div class="analytics-toolbar">
+    <a href="?days=7" {% if days == 7 %}class="active"{% endif %}>7天</a>
+    <a href="?days=14" {% if days == 14 %}class="active"{% endif %}>14天</a>
+    <a href="?days=30" {% if days == 30 %}class="active"{% endif %}>30天</a>
+  </div>
+
+  {% if stats_list %}
+  {% with today=stats_list.0 %}
+  <div class="card-row">
+    <div class="card">
+      <div class="label">今日新建会话</div>
+      <div class="value">{{ today.new_sessions }}</div>
+    </div>
+    <div class="card">
+      <div class="label">今日活跃用户</div>
+      <div class="value">{{ today.active_users }}</div>
+    </div>
+    <div class="card">
+      <div class="label">今日平均轮次</div>
+      <div class="value">{{ today.avg_rounds|floatformat:1 }}</div>
+    </div>
+    <div class="card">
+      <div class="label">今日完成率</div>
+      <div class="value">{% widthratio today.completion_rate 1 100 %}%</div>
+    </div>
+  </div>
+  {% endwith %}
+  {% endif %}
+
+  <div class="chart-wrap">
+    <h3>新建会话 &amp; 活跃用户趋势</h3>
+    <canvas id="trendChart" height="80"></canvas>
+  </div>
+
+  <div class="chart-wrap">
+    <h3>平均轮次趋势</h3>
+    <canvas id="roundsChart" height="60"></canvas>
+  </div>
+
+  <div class="chart-wrap">
+    <h3>Persona 分布（累计）</h3>
+    <canvas id="personaChart" height="60"></canvas>
+  </div>
+
+  <div class="chart-wrap">
+    <h3>明细数据</h3>
+    <table class="stats-table">
+      <thead>
+        <tr>
+          <th>日期</th>
+          <th>新建会话</th>
+          <th>活跃用户</th>
+          <th>平均轮次</th>
+          <th>完成率</th>
+          <th>超时率</th>
+          <th>平均时长(分)</th>
+          <th>危机触发</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for s in stats_list %}
+        <tr>
+          <td>{{ s.date }}</td>
+          <td>{{ s.new_sessions }}</td>
+          <td>{{ s.active_users }}</td>
+          <td>{{ s.avg_rounds|floatformat:1 }}</td>
+          <td>{% widthratio s.completion_rate 1 100 %}%</td>
+          <td>{% widthratio s.timeout_rate 1 100 %}%</td>
+          <td>{{ s.avg_duration_minutes|floatformat:1 }}</td>
+          <td>{{ s.crisis_count }}</td>
+        </tr>
+        {% empty %}
+        <tr><td colspan="8" style="text-align:center;color:#999;">暂无数据</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+
+</div>
+
+<script>
+new Chart(document.getElementById('trendChart'), {
+  type: 'line',
+  data: {
+    labels: {{ chart_labels|safe }},
+    datasets: [
+      { label: '新建会话', data: {{ chart_new_sessions|safe }}, borderColor: '#447e9b', backgroundColor: 'rgba(68,126,155,0.08)', tension: 0.3, fill: true },
+      { label: '活跃用户', data: {{ chart_active_users|safe }}, borderColor: '#e9573f', backgroundColor: 'rgba(233,87,63,0.08)', tension: 0.3, fill: true }
+    ]
+  },
+  options: { responsive: true, plugins: { legend: { position: 'top' } } }
+});
+
+new Chart(document.getElementById('roundsChart'), {
+  type: 'line',
+  data: {
+    labels: {{ chart_labels|safe }},
+    datasets: [
+      { label: '平均轮次', data: {{ chart_avg_rounds|safe }}, borderColor: '#5cb85c', backgroundColor: 'rgba(92,184,92,0.08)', tension: 0.3, fill: true }
+    ]
+  },
+  options: { responsive: true, plugins: { legend: { position: 'top' } } }
+});
+
+new Chart(document.getElementById('personaChart'), {
+  type: 'bar',
+  data: {
+    labels: {{ persona_labels|safe }},
+    datasets: [
+      { label: '累计会话数', data: {{ persona_totals|safe }}, backgroundColor: ['#447e9b','#e9573f','#5cb85c','#f0ad4e'] }
+    ]
+  },
+  options: { responsive: true, plugins: { legend: { display: false } } }
+});
+</script>
+{% endblock %}
