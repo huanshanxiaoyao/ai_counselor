@@ -66,6 +66,7 @@ INSTALLED_APPS = [
     'backend.moodpal',
     'backend.moodpal_eval',
     'backend.roundtable',
+    'backend.analytics',
 ]
 
 MIDDLEWARE = [
