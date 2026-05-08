@@ -13,6 +13,7 @@ from ..services.psychoanalysis_runtime_service import (
     merge_psychoanalysis_state_metadata,
     run_psychoanalysis_turn,
 )
+from ..services.spirit_companion_runtime_service import run_spirit_companion_turn
 
 
 logger = logging.getLogger(__name__)
@@ -133,6 +134,9 @@ def _dispatch_runtime(
         return result.reply_text, result.reply_metadata, result.persist_patch
     if session.persona_id == MoodPalSession.Persona.INSIGHT_MENTOR:
         result = run_psychoanalysis_turn(session=session, history_messages=history_messages)
+        return result.reply_text, result.reply_metadata, result.persist_patch
+    if session.persona_id == MoodPalSession.Persona.SPIRIT_COMPANION:
+        result = run_spirit_companion_turn(session=session, history_messages=history_messages)
         return result.reply_text, result.reply_metadata, result.persist_patch
     return _build_placeholder_reply(session, user_content), {
         'engine': 'placeholder',
@@ -255,6 +259,11 @@ def _build_system_fallback_reply(session: RuntimeSessionContext, user_content: s
         reply_text = (
             f"我先接住你刚才说的“{excerpt}”。现在系统这一步没有跟上，"
             "但你可以继续慢一点说，我会先陪你把最难受的部分放在这里。"
+        )
+    elif session.persona_id == MoodPalSession.Persona.SPIRIT_COMPANION:
+        reply_text = (
+            f"本猫刚才没接住“{excerpt}”，有点失误。"
+            "没关系，你继续说，本猫还在。"
         )
     else:
         reply_text = (
