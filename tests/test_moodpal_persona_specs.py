@@ -1,9 +1,9 @@
 import pytest
-from backend.moodpal.persona_specs import get_persona_spec, PERSONA_SPECS
+from backend.moodpal.persona_specs import get_persona_spec, get_soul_metadata, PERSONA_SPECS
 
 
-def test_all_four_personas_defined():
-    for pid in ('logic_brother', 'empathy_sister', 'insight_mentor', 'master_guide'):
+def test_all_five_personas_defined():
+    for pid in ('logic_brother', 'empathy_sister', 'insight_mentor', 'master_guide', 'spirit_companion'):
         assert pid in PERSONA_SPECS
         assert len(PERSONA_SPECS[pid]) > 100
 
@@ -33,10 +33,29 @@ def test_get_persona_spec_master_guide():
     assert '蔡康永' in spec
 
 
+def test_get_persona_spec_spirit_companion():
+    spec = get_persona_spec('spirit_companion')
+    assert '橘' in spec
+    assert '猫' in spec
+
+
 def test_get_persona_spec_unknown_returns_fallback():
     spec = get_persona_spec('unknown_persona')
     assert len(spec) > 10
     assert spec != ''
+
+
+def test_get_soul_metadata_returns_frontmatter():
+    meta = get_soul_metadata('logic_brother')
+    assert meta.get('id') == 'logic_brother'
+    assert meta.get('name') == '逻辑哥哥'
+    assert isinstance(meta.get('tags'), list)
+
+
+def test_get_soul_metadata_spirit_companion():
+    meta = get_soul_metadata('spirit_companion')
+    assert meta.get('id') == 'spirit_companion'
+    assert meta.get('name') == '橘'
 
 
 def test_persona_specs_contain_no_clinical_labels():

@@ -1,52 +1,66 @@
 from __future__ import annotations
 
-PERSONA_SPECS: dict[str, str] = {
-    'logic_brother': (
-        '你叫逻辑哥哥，是个理工男气质的大哥。说话直接，偶尔有点冷幽默，从不说教，'
-        '不觉得世界上有标准答案，尊重每个人自己的选择。\n\n'
-        '你喜欢足球、地理和中国历史。聊到合适的时候会顺手把这些拿来打比方——'
-        '用一场战役的决策类比职场处境，用某个地形说明一件事的结构。自然地来，不刻意。\n\n'
-        '你的幽默是李诞那种：看穿但不戳破，自嘲，有点犬儒，但骨子里是温的。'
-        '不频繁，偶尔一句，到位就行。\n\n'
-        '你说话短句居多，不铺垫，直接进入。你追问的方式是"等等，这个逻辑对吗"'
-        '或者"你说这话我信吗"，不是心理咨询式的"你能多说一点吗"。\n\n'
-        '你从来不做的事：讲道理，说"你应该"，反复引用对方的原话当镜子，'
-        '假装比对方更懂对方自己。'
-    ),
-    'empathy_sister': (
-        '你叫共情学姐，是个感性、独立、见过世面的学姐，不端架子，说话像跟最好的朋友聊天。\n\n'
-        '你喜欢旅行，去过很多地方。偶尔会用旅途见闻、某个城市的气质，'
-        '或者某种文化习惯，来聊当下正在谈的事。自然地来，不是为了显摆。\n\n'
-        '你相信每个人都有权追求自己想要的生活，不评判别人的选择。\n\n'
-        '你说话的节奏：跟着对方走，不抢。"嗯嗯然后呢"是你的基本动作。'
-        '你捕捉情绪的能力很强，但不急着命名，先让对方多说一点。'
-        '你不给建议，除非对方明确要。\n\n'
-        '你从来不做的事：讲大道理，分析原因，说"你其实是因为XXX才这样"，'
-        '表现出比对方更快知道答案。'
-    ),
-    'insight_mentor': (
-        '你叫心理学前辈，是个经历了很多事的智者，随和，慢，不急。\n\n'
-        '你不急着说什么，你更感兴趣的是让对方自己说出来。'
-        '你问的问题不多，但每个都有分量——通常是让对方往里面再走一步的那种。'
-        '即使你已经看明白了某个模式，也只是轻轻放一颗种子，让对方自己长。\n\n'
-        '"我在想……"是你的常用开头。你的问题通常指向感受而不是事实，'
-        '指向"这个让你想到什么"而不是"发生了什么"。\n\n'
-        '你从来不做的事：急于给结论，说任何像是诊断的话，连续追问，'
-        '比对方更急着把事情弄清楚。'
-    ),
-    'master_guide': (
-        '你叫主理人，像蔡康永那种人：高情商，口才好，懂人，'
-        '同时能在合适的时候讲清楚逻辑、往深处挖、把一个话题拉到更大的视角来看。\n\n'
-        '你的核心能力是感知当下这个人需要什么。有时候他需要被接住，有时候需要被追问，'
-        '有时候需要有人帮他把那团乱麻理出一根线来。'
-        '你能在这几种状态之间自然切换，不让对方感觉到你在换频道。\n\n'
-        '你说话灵活，跟着当下走，不预设方向。\n\n'
-        '你从来不做的事：让对方感觉在被"处理"，说话有套路感，说得太满。'
-    ),
-}
+from functools import lru_cache
+from pathlib import Path
 
+try:
+    import yaml as _yaml
+    _HAS_YAML = True
+except ImportError:
+    _HAS_YAML = False
+
+_SOULS_DIR = Path(__file__).parent / 'souls'
 _FALLBACK_SPEC = '你是一个温和、稳定的对话伙伴，尊重对方节奏，不说教，不预设结论。'
 
 
+def _parse_soul_file(path: Path) -> tuple[dict, str]:
+    text = path.read_text(encoding='utf-8')
+    if not text.startswith('---\n'):
+        return {}, text.strip()
+    try:
+        end_idx = text.index('\n---\n', 4)
+    except ValueError:
+        return {}, text.strip()
+    yaml_text = text[4:end_idx]
+    body = text[end_idx + 5:].strip()
+    meta: dict = {}
+    if _HAS_YAML:
+        try:
+            meta = _yaml.safe_load(yaml_text) or {}
+        except Exception:
+            meta = {}
+    return meta, body
+
+
+@lru_cache(maxsize=None)
+def _load_all_souls() -> dict[str, tuple[dict, str]]:
+    souls: dict[str, tuple[dict, str]] = {}
+    if not _SOULS_DIR.exists():
+        return souls
+    for path in _SOULS_DIR.glob('*.soul.md'):
+        soul_id = path.stem.replace('.soul', '')
+        meta, body = _parse_soul_file(path)
+        resolved_id = meta.get('id') or soul_id
+        souls[resolved_id] = (meta, body)
+    return souls
+
+
+# Module-level dict for backward compatibility with existing imports
+PERSONA_SPECS: dict[str, str] = {
+    soul_id: body
+    for soul_id, (_, body) in _load_all_souls().items()
+}
+
+
 def get_persona_spec(persona_id: str) -> str:
-    return PERSONA_SPECS.get(persona_id, _FALLBACK_SPEC)
+    souls = _load_all_souls()
+    if persona_id in souls:
+        return souls[persona_id][1]
+    return _FALLBACK_SPEC
+
+
+def get_soul_metadata(persona_id: str) -> dict:
+    souls = _load_all_souls()
+    if persona_id in souls:
+        return souls[persona_id][0]
+    return {}
