@@ -7,16 +7,30 @@ from backend.roundtable.models import Discussion
 from .views import moodpal_daily_view, moodpal_user_detail_view, moodpal_users_view
 from .views_roundtable import rt_daily_view, rt_user_detail_view, rt_users_view
 
+# Both proxy models are named 'Da' via type() so admin URLs become
+# /admin/moodpal/da/...  and  /admin/roundtable/da/...
+MoodPalDa = type('Da', (MoodPalSession,), {
+    '__module__': __name__,
+    'Meta': type('Meta', (), {
+        'proxy': True,
+        'app_label': 'moodpal',
+        'verbose_name': 'MoodPal Analytics',
+        'verbose_name_plural': 'MoodPal Analytics',
+    }),
+})
 
-class MoodPalAnalyticsProxy(MoodPalSession):
-    class Meta:
-        proxy = True
-        verbose_name = 'MoodPal Analytics'
-        verbose_name_plural = 'MoodPal Analytics'
-        app_label = 'moodpal'
+RtDa = type('Da', (Discussion,), {
+    '__module__': __name__,
+    'Meta': type('Meta', (), {
+        'proxy': True,
+        'app_label': 'roundtable',
+        'verbose_name': 'Roundtable Analytics',
+        'verbose_name_plural': 'Roundtable Analytics',
+    }),
+})
 
 
-@admin.register(MoodPalAnalyticsProxy)
+@admin.register(MoodPalDa)
 class MoodPalAnalyticsAdmin(admin.ModelAdmin):
     def get_urls(self):
         urls = super().get_urls()
@@ -37,15 +51,7 @@ class MoodPalAnalyticsAdmin(admin.ModelAdmin):
         return False
 
 
-class RoundtableAnalyticsProxy(Discussion):
-    class Meta:
-        proxy = True
-        verbose_name = 'Roundtable Analytics'
-        verbose_name_plural = 'Roundtable Analytics'
-        app_label = 'roundtable'
-
-
-@admin.register(RoundtableAnalyticsProxy)
+@admin.register(RtDa)
 class RoundtableAnalyticsAdmin(admin.ModelAdmin):
     def get_urls(self):
         urls = super().get_urls()
