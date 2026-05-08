@@ -1,0 +1,218 @@
+{% extends "admin/base_site.html" %}
+
+{% block extrahead %}
+{{ block.super }}
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<style>
+.back-link { margin-bottom: 16px; display: inline-block; color: #447e9b; text-decoration: none; font-size: 13px; }
+.back-link:hover { text-decoration: underline; }
+.section-title { font-size: 15px; font-weight: 600; color: #333; margin: 24px 0 12px 0; border-left: 4px solid #447e9b; padding-left: 10px; }
+.card-row { display: flex; gap: 16px; margin-bottom: 20px; flex-wrap: wrap; }
+.card { flex: 1; min-width: 130px; background: #fff; border: 1px solid #ddd; border-radius: 6px; padding: 14px 16px; text-align: center; }
+.card .label { font-size: 12px; color: #666; margin-bottom: 4px; }
+.card .value { font-size: 24px; font-weight: bold; color: #333; }
+.info-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; margin-bottom: 20px; }
+.info-item { background: #fff; border: 1px solid #ddd; border-radius: 6px; padding: 12px 16px; }
+.info-item .label { font-size: 12px; color: #888; margin-bottom: 4px; }
+.info-item .val { font-size: 14px; color: #333; font-weight: 500; }
+.chart-wrap { background: #fff; border: 1px solid #ddd; border-radius: 6px; padding: 16px; margin-bottom: 20px; }
+.chart-wrap h3 { margin: 0 0 12px 0; font-size: 13px; color: #555; }
+.quota-bar-wrap { background: #eee; border-radius: 4px; height: 12px; overflow: hidden; margin-top: 4px; }
+.quota-bar { height: 100%; border-radius: 4px; background: #5cb85c; }
+.quota-bar.warn { background: #f0ad4e; }
+.quota-bar.danger { background: #e9573f; }
+table.detail-table { width: 100%; border-collapse: collapse; background: #fff; }
+table.detail-table th, table.detail-table td { padding: 8px 12px; border-bottom: 1px solid #eee; font-size: 13px; }
+table.detail-table th { background: #f8f8f8; font-weight: 600; white-space: nowrap; }
+.badge { display: inline-block; padding: 2px 6px; border-radius: 4px; font-size: 11px; }
+.badge-finished { background: #d4edda; color: #155724; }
+.badge-active { background: #cce5ff; color: #004085; }
+.badge-other { background: #e2e3e5; color: #383d41; }
+.badge-pub { background: #fff3cd; color: #856404; }
+.badge-priv { background: #e2e3e5; color: #383d41; }
+.role-tag { display: inline-block; padding: 2px 6px; border-radius: 4px; font-size: 11px; background: #e8f4f8; color: #0c5460; }
+.pagination { margin-top: 12px; display: flex; gap: 8px; align-items: center; }
+.pagination a { padding: 4px 10px; border: 1px solid #ccc; border-radius: 4px; text-decoration: none; color: #333; font-size: 13px; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div id="content-main">
+
+  <a class="back-link" href="../">← 返回用户列表</a>
+
+  <div class="section-title">基本信息</div>
+  <div class="info-grid">
+    <div class="info-item">
+      <div class="label">用户标识</div>
+      <div class="val" style="word-break:break-all;">{{ subject_key }}</div>
+    </div>
+    <div class="info-item">
+      <div class="label">账号状态</div>
+      <div class="val">
+        {% if basic.is_registered %}已注册{% if basic.username %}（{{ basic.username }}）{% endif %}{% else %}匿名{% endif %}
+      </div>
+    </div>
+    <div class="info-item">
+      <div class="label">首次使用</div>
+      <div class="val">{{ basic.first_seen|date:"Y-m-d H:i" }}</div>
+    </div>
+    <div class="info-item">
+      <div class="label">最近活跃</div>
+      <div class="val">{{ basic.last_active|date:"Y-m-d H:i" }}</div>
+    </div>
+  </div>
+
+  <div class="section-title">累计数据</div>
+  <div class="card-row">
+    <div class="card">
+      <div class="label">总讨论数</div>
+      <div class="value">{{ cumulative.total_discussions }}</div>
+    </div>
+    <div class="card">
+      <div class="label">已完成讨论</div>
+      <div class="value">{{ cumulative.finished_discussions }}</div>
+    </div>
+    <div class="card">
+      <div class="label">平均轮数</div>
+      <div class="value">{{ cumulative.avg_rounds|floatformat:1 }}</div>
+    </div>
+    <div class="card">
+      <div class="label">配额超限次数</div>
+      <div class="value">{{ cumulative.quota_exceeded_count }}</div>
+    </div>
+  </div>
+
+  <div class="chart-wrap">
+    <div style="display:flex;gap:24px;align-items:flex-start;margin-bottom:12px;">
+      <div style="flex:1;">
+        <div style="font-size:12px;color:#888;">Token 消耗</div>
+        <div style="font-size:22px;font-weight:bold;">{{ cumulative.used_tokens }}</div>
+        <div style="font-size:12px;color:#888;">配额上限：{{ cumulative.quota_limit }}</div>
+        {% if cumulative.quota_limit > 0 %}
+        <div class="quota-bar-wrap" style="margin-top:6px;">
+          <div class="quota-bar {% if cumulative.quota_rate >= 0.9 %}danger{% elif cumulative.quota_rate >= 0.7 %}warn{% endif %}"
+               style="width:{% widthratio cumulative.quota_rate 1 100 %}%"></div>
+        </div>
+        <div style="font-size:11px;color:#666;margin-top:2px;">{% widthratio cumulative.quota_rate 1 100 %}%</div>
+        {% endif %}
+      </div>
+      <div style="flex:1;">
+        <div style="font-size:12px;color:#888;margin-bottom:6px;">用户角色分布</div>
+        <div style="font-size:13px;">主持人 <strong>{{ cumulative.role_dist.host }}</strong> | 参与者 <strong>{{ cumulative.role_dist.participant }}</strong> | 旁观者 <strong>{{ cumulative.role_dist.observer }}</strong></div>
+      </div>
+    </div>
+  </div>
+
+  {% if cumulative.top3_chars %}
+  <div class="chart-wrap">
+    <h3>最常用历史人物 TOP3</h3>
+    <canvas id="charChart" height="60"></canvas>
+  </div>
+  {% endif %}
+
+  <div class="section-title">近30天数据</div>
+  <table class="detail-table">
+    <thead>
+      <tr>
+        <th>日期</th>
+        <th>讨论数</th>
+        <th>Token 消耗</th>
+        <th>话题</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for row in daily %}
+      <tr>
+        <td>{{ row.date }}</td>
+        <td>{{ row.discussion_count }}</td>
+        <td>{{ row.tokens }}</td>
+        <td style="color:#555;font-size:12px;">
+          {% for t in row.topics %}{{ t }}{% if not forloop.last %}；{% endif %}{% endfor %}
+        </td>
+      </tr>
+      {% empty %}
+      <tr><td colspan="4" style="text-align:center;color:#999;padding:24px;">近30天暂无数据</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+
+  <div class="section-title">讨论流水</div>
+  <table class="detail-table">
+    <thead>
+      <tr>
+        <th>创建时间</th>
+        <th>话题</th>
+        <th>角色</th>
+        <th>历史人物</th>
+        <th>轮数</th>
+        <th>时长(分)</th>
+        <th>状态</th>
+        <th>Token</th>
+        <th>可见性</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for d in discussions %}
+      <tr>
+        <td style="white-space:nowrap;font-size:12px;color:#666;">{{ d.created_at|date:"Y-m-d H:i" }}</td>
+        <td style="max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="{{ d.topic }}">{{ d.topic }}</td>
+        <td><span class="role-tag">{{ d.user_role }}</span></td>
+        <td style="font-size:12px;color:#555;">
+          {% for c in d.characters %}{{ c }}{% if not forloop.last %}、{% endif %}{% endfor %}
+        </td>
+        <td>{{ d.current_round }}</td>
+        <td>
+          {% if d.duration_minutes is not None %}{{ d.duration_minutes|floatformat:1 }}{% else %}-{% endif %}
+        </td>
+        <td>
+          {% if d.status == 'finished' %}
+            <span class="badge badge-finished">已完成</span>
+          {% elif d.status == 'active' %}
+            <span class="badge badge-active">进行中</span>
+          {% else %}
+            <span class="badge badge-other">{{ d.status }}</span>
+          {% endif %}
+        </td>
+        <td>{{ d.tokens }}</td>
+        <td>
+          {% if d.visibility == 'public' %}
+            <span class="badge badge-pub">公开</span>
+          {% else %}
+            <span class="badge badge-priv">仅自己</span>
+          {% endif %}
+        </td>
+      </tr>
+      {% empty %}
+      <tr><td colspan="9" style="text-align:center;color:#999;padding:24px;">暂无数据</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+
+  {% if disc_total_pages > 1 %}
+  <div class="pagination">
+    {% if disc_page > 1 %}
+    <a href="?disc_page={{ disc_page|add:'-1' }}">上一页</a>
+    {% endif %}
+    <span style="font-size:13px;color:#666;">{{ disc_page }} / {{ disc_total_pages }}</span>
+    {% if disc_page < disc_total_pages %}
+    <a href="?disc_page={{ disc_page|add:'1' }}">下一页</a>
+    {% endif %}
+  </div>
+  {% endif %}
+
+</div>
+
+{% if cumulative.top3_chars %}
+<script>
+new Chart(document.getElementById('charChart'), {
+  type: 'bar',
+  data: {
+    labels: {{ top3_labels|safe }},
+    datasets: [{ label: '选用次数', data: {{ top3_values|safe }}, backgroundColor: ['#447e9b','#e9573f','#5cb85c'] }]
+  },
+  options: { responsive: true, plugins: { legend: { display: false } } }
+});
+</script>
+{% endif %}
+{% endblock %}

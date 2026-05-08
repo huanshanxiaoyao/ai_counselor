@@ -1,0 +1,187 @@
+{% extends "admin/base_site.html" %}
+
+{% block extrahead %}
+{{ block.super }}
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<style>
+.analytics-toolbar { margin-bottom: 16px; }
+.analytics-toolbar a { margin-right: 8px; padding: 4px 12px; border: 1px solid #ccc; border-radius: 4px; text-decoration: none; color: #333; }
+.analytics-toolbar a.active { background: #447e9b; color: #fff; border-color: #447e9b; }
+.card-row { display: flex; gap: 16px; margin-bottom: 24px; }
+.card { flex: 1; background: #fff; border: 1px solid #ddd; border-radius: 6px; padding: 16px; text-align: center; }
+.card .label { font-size: 12px; color: #666; margin-bottom: 4px; }
+.card .value { font-size: 28px; font-weight: bold; color: #333; }
+.chart-wrap { background: #fff; border: 1px solid #ddd; border-radius: 6px; padding: 16px; margin-bottom: 24px; }
+.chart-wrap h3 { margin: 0 0 12px 0; font-size: 14px; color: #444; }
+.chart-row { display: flex; gap: 16px; margin-bottom: 24px; }
+.chart-row .chart-wrap { flex: 1; margin-bottom: 0; }
+table.stats-table { width: 100%; border-collapse: collapse; background: #fff; }
+table.stats-table th, table.stats-table td { padding: 8px 12px; border-bottom: 1px solid #eee; font-size: 13px; text-align: right; }
+table.stats-table th { background: #f8f8f8; font-weight: 600; text-align: right; }
+table.stats-table th:first-child, table.stats-table td:first-child { text-align: left; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div id="content-main">
+
+  <div class="analytics-toolbar">
+    <a href="?days=7" {% if days == 7 %}class="active"{% endif %}>7天</a>
+    <a href="?days=14" {% if days == 14 %}class="active"{% endif %}>14天</a>
+    <a href="?days=30" {% if days == 30 %}class="active"{% endif %}>30天</a>
+  </div>
+
+  {% if stats_list %}
+  {% with today=stats_list.0 %}
+  <div class="card-row">
+    <div class="card">
+      <div class="label">今日新建讨论</div>
+      <div class="value">{{ today.new_discussions }}</div>
+    </div>
+    <div class="card">
+      <div class="label">今日活跃用户</div>
+      <div class="value">{{ today.active_users }}</div>
+    </div>
+    <div class="card">
+      <div class="label">今日完成率</div>
+      <div class="value">{% widthratio today.completion_rate 1 100 %}%</div>
+    </div>
+    <div class="card">
+      <div class="label">今日 Token 消耗</div>
+      <div class="value">{{ today.daily_tokens }}</div>
+    </div>
+    <div class="card">
+      <div class="label">今日平均轮数</div>
+      <div class="value">{{ today.avg_rounds|floatformat:1 }}</div>
+    </div>
+  </div>
+  {% endwith %}
+  {% endif %}
+
+  <div class="chart-wrap">
+    <h3>新建讨论 &amp; 活跃用户趋势</h3>
+    <canvas id="trendChart" height="80"></canvas>
+  </div>
+
+  <div class="chart-row">
+    <div class="chart-wrap">
+      <h3>每日 Token 消耗</h3>
+      <canvas id="tokensChart" height="100"></canvas>
+    </div>
+    <div class="chart-wrap">
+      <h3>平均轮数趋势</h3>
+      <canvas id="roundsChart" height="100"></canvas>
+    </div>
+  </div>
+
+  <div class="chart-row">
+    <div class="chart-wrap">
+      <h3>最热历史人物 TOP10（窗口期累计）</h3>
+      <canvas id="charChart" height="120"></canvas>
+    </div>
+    <div class="chart-wrap">
+      <h3>Provider Token 分布（窗口期累计）</h3>
+      <canvas id="providerChart" height="120"></canvas>
+    </div>
+  </div>
+
+  <div class="chart-wrap">
+    <h3>明细数据</h3>
+    <table class="stats-table">
+      <thead>
+        <tr>
+          <th>日期</th>
+          <th>新建讨论</th>
+          <th>完成讨论</th>
+          <th>活跃用户</th>
+          <th>完成率</th>
+          <th>平均时长(分)</th>
+          <th>平均轮数</th>
+          <th>Token 消耗</th>
+          <th>公开占比</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for s in stats_list %}
+        <tr>
+          <td>{{ s.date }}</td>
+          <td>{{ s.new_discussions }}</td>
+          <td>{{ s.finished_discussions }}</td>
+          <td>{{ s.active_users }}</td>
+          <td>{% widthratio s.completion_rate 1 100 %}%</td>
+          <td>{{ s.avg_duration_minutes|floatformat:1 }}</td>
+          <td>{{ s.avg_rounds|floatformat:1 }}</td>
+          <td>{{ s.daily_tokens }}</td>
+          <td>{% widthratio s.public_ratio 1 100 %}%</td>
+        </tr>
+        {% empty %}
+        <tr><td colspan="9" style="text-align:center;color:#999;">暂无数据</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+
+</div>
+
+<script>
+new Chart(document.getElementById('trendChart'), {
+  type: 'line',
+  data: {
+    labels: {{ chart_labels|safe }},
+    datasets: [
+      { label: '新建讨论', data: {{ chart_new_discussions|safe }}, borderColor: '#447e9b', backgroundColor: 'rgba(68,126,155,0.08)', tension: 0.3, fill: true },
+      { label: '活跃用户', data: {{ chart_active_users|safe }}, borderColor: '#e9573f', backgroundColor: 'rgba(233,87,63,0.08)', tension: 0.3, fill: true }
+    ]
+  },
+  options: { responsive: true, plugins: { legend: { position: 'top' } } }
+});
+
+new Chart(document.getElementById('tokensChart'), {
+  type: 'bar',
+  data: {
+    labels: {{ chart_labels|safe }},
+    datasets: [
+      { label: 'Token 消耗', data: {{ chart_daily_tokens|safe }}, backgroundColor: 'rgba(68,126,155,0.6)' }
+    ]
+  },
+  options: { responsive: true, plugins: { legend: { display: false } } }
+});
+
+new Chart(document.getElementById('roundsChart'), {
+  type: 'line',
+  data: {
+    labels: {{ chart_labels|safe }},
+    datasets: [
+      { label: '平均轮数', data: {{ chart_avg_rounds|safe }}, borderColor: '#5cb85c', backgroundColor: 'rgba(92,184,92,0.08)', tension: 0.3, fill: true }
+    ]
+  },
+  options: { responsive: true, plugins: { legend: { display: false } } }
+});
+
+new Chart(document.getElementById('charChart'), {
+  type: 'bar',
+  data: {
+    labels: {{ top10_char_labels|safe }},
+    datasets: [
+      { label: '选用次数', data: {{ top10_char_values|safe }}, backgroundColor: '#f0ad4e' }
+    ]
+  },
+  options: {
+    indexAxis: 'y',
+    responsive: true,
+    plugins: { legend: { display: false } }
+  }
+});
+
+new Chart(document.getElementById('providerChart'), {
+  type: 'bar',
+  data: {
+    labels: {{ provider_labels|safe }},
+    datasets: [
+      { label: 'Token 消耗', data: {{ provider_values|safe }}, backgroundColor: ['#447e9b','#e9573f','#5cb85c','#f0ad4e','#9b59b6'] }
+    ]
+  },
+  options: { responsive: true, plugins: { legend: { display: false } } }
+});
+</script>
+{% endblock %}
