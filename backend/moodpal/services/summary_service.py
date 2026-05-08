@@ -95,6 +95,16 @@ def _common_footer_lines(*, persona_id: str) -> list[str]:
             '',
             '你可以直接编辑这份摘要，只保留真正希望未来继续记住的部分。',
         ]
+    if persona_id == MoodPalSession.Persona.SPIRIT_COMPANION:
+        return [
+            '',
+            '建议保留到长期记忆的内容：',
+            '- 这次聊到的让你觉得轻松或有意思的事',
+            '- 你现在最在意的是什么',
+            '- 下次还想继续聊的话题',
+            '',
+            '你可以直接编辑这份摘要，只保留真正希望未来继续记住的部分。',
+        ]
     return [
         '',
         '建议保留到长期记忆的内容：',
