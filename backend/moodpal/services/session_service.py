@@ -66,6 +66,17 @@ PERSONA_CATALOG = {
         'start_prompt': '我好像总是在同一个地方卡住。',
         'recommended': False,
     },
+    MoodPalSession.Persona.SPIRIT_COMPANION: {
+        'id': MoodPalSession.Persona.SPIRIT_COMPANION,
+        'title': '不讲方法论的小猫仙',
+        'display_title': '小猫仙橘',
+        'avatar': 'img/moodpal/role5.png',
+        'subtitle': '就是聊聊，没有别的',
+        'description': '橘。一只自称猫仙的存在，臭屁但靠谱，童真但不幼稚。不分析、不总结、不给方案，就陪你说说话。',
+        'problems': ['随便聊聊', '不想被分析', '就是想说话'],
+        'start_prompt': '我就是想随便聊聊。',
+        'recommended': False,
+    },
 }
 
 
