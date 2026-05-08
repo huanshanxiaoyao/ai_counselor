@@ -428,14 +428,10 @@
                 <li>MoodPal 提供的是日常陪伴与方法性支持，不构成医疗建议或紧急援助。</li>
             </ul>
         </div>
-        <label class="privacy-checkbox">
-            <input type="checkbox" id="privacy-ack-checkbox">
-            <span>我已理解本次会话的隐私处理方式与产品边界，并同意进入对话。</span>
-        </label>
         <div class="privacy-error" id="privacy-error"></div>
         <div class="privacy-actions">
             <button type="button" class="ghost" id="privacy-cancel-btn">暂不开始</button>
-            <button type="button" class="primary" id="privacy-confirm-btn" disabled>确认并进入会话</button>
+            <button type="button" class="primary" id="privacy-confirm-btn">已阅读且确认进入对话</button>
         </div>
     </div>
 </div>
@@ -447,7 +443,6 @@
         const modal = document.getElementById('privacy-handshake-modal');
         const errorBox = document.getElementById('moodpal-form-error');
         const privacyError = document.getElementById('privacy-error');
-        const checkbox = document.getElementById('privacy-ack-checkbox');
         const confirmBtn = document.getElementById('privacy-confirm-btn');
         const cancelBtn = document.getElementById('privacy-cancel-btn');
         const personaTitle = document.getElementById('privacy-persona-title');
@@ -469,8 +464,6 @@
             modal.classList.remove('active');
             pendingPayload = null;
             privacyError.textContent = '';
-            checkbox.checked = false;
-            confirmBtn.disabled = true;
         }
 
         function openModal(payload) {
@@ -482,10 +475,6 @@
 
         async function createSession() {
             if (!pendingPayload) return;
-            if (!checkbox.checked) {
-                privacyError.textContent = '请先确认隐私契约与边界说明。';
-                return;
-            }
             privacyError.textContent = '';
             confirmBtn.disabled = true;
             try {
@@ -539,10 +528,6 @@
             });
         });
 
-        checkbox.addEventListener('change', () => {
-            privacyError.textContent = '';
-            confirmBtn.disabled = !checkbox.checked;
-        });
         confirmBtn.addEventListener('click', createSession);
         cancelBtn.addEventListener('click', closeModal);
         modal.addEventListener('click', (event) => {
