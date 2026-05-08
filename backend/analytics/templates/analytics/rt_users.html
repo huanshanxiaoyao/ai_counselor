@@ -1,0 +1,99 @@
+{% extends "admin/base_site.html" %}
+
+{% block extrahead %}
+{{ block.super }}
+<style>
+.analytics-nav { margin-bottom: 16px; display: flex; gap: 12px; align-items: center; }
+.analytics-nav a { padding: 4px 12px; border: 1px solid #ccc; border-radius: 4px; text-decoration: none; color: #333; font-size: 13px; }
+.analytics-nav a.active { background: #447e9b; color: #fff; border-color: #447e9b; }
+table.user-table { width: 100%; border-collapse: collapse; background: #fff; }
+table.user-table th, table.user-table td { padding: 8px 12px; border-bottom: 1px solid #eee; font-size: 13px; }
+table.user-table th { background: #f8f8f8; font-weight: 600; white-space: nowrap; }
+table.user-table td a { color: #447e9b; text-decoration: none; }
+table.user-table td a:hover { text-decoration: underline; }
+.quota-bar-wrap { background: #eee; border-radius: 4px; height: 10px; min-width: 80px; overflow: hidden; }
+.quota-bar { height: 100%; border-radius: 4px; background: #5cb85c; }
+.quota-bar.warn { background: #f0ad4e; }
+.quota-bar.danger { background: #e9573f; }
+.pagination { margin-top: 16px; display: flex; gap: 8px; align-items: center; }
+.pagination a { padding: 4px 10px; border: 1px solid #ccc; border-radius: 4px; text-decoration: none; color: #333; font-size: 13px; }
+.badge { display: inline-block; padding: 2px 8px; border-radius: 10px; font-size: 11px; }
+.badge-reg { background: #d4edda; color: #155724; }
+.badge-anon { background: #e2e3e5; color: #383d41; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div id="content-main">
+
+  <div class="analytics-nav">
+    排序：
+    <a href="?order_by=-last_active" {% if order_by == '-last_active' %}class="active"{% endif %}>最近活跃↓</a>
+    <a href="?order_by=-discussion_count" {% if order_by == '-discussion_count' %}class="active"{% endif %}>讨论数↓</a>
+    <a href="?order_by=-used_tokens" {% if order_by == '-used_tokens' %}class="active"{% endif %}>Token↓</a>
+    <span style="margin-left:auto;color:#666;font-size:13px;">共 {{ total }} 位用户</span>
+  </div>
+
+  <table class="user-table">
+    <thead>
+      <tr>
+        <th>用户标识</th>
+        <th>账号状态</th>
+        <th>累计讨论数</th>
+        <th>累计 Token</th>
+        <th>配额使用率</th>
+        <th>首次使用</th>
+        <th>最近活跃</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for row in rows %}
+      <tr>
+        <td>
+          <a href="../user/{{ row.usage_subject }}/">{{ row.usage_subject }}</a>
+        </td>
+        <td>
+          {% if row.is_registered %}
+            <span class="badge badge-reg">已注册</span>
+          {% else %}
+            <span class="badge badge-anon">匿名</span>
+          {% endif %}
+        </td>
+        <td>{{ row.discussion_count }}</td>
+        <td>{{ row.used_tokens }}</td>
+        <td>
+          {% if row.quota_limit > 0 %}
+          <div style="display:flex;align-items:center;gap:6px;">
+            <div class="quota-bar-wrap">
+              <div class="quota-bar {% if row.quota_rate >= 0.9 %}danger{% elif row.quota_rate >= 0.7 %}warn{% endif %}"
+                   style="width:{% widthratio row.quota_rate 1 100 %}%"></div>
+            </div>
+            <span style="font-size:12px;color:#666;">{% widthratio row.quota_rate 1 100 %}%</span>
+          </div>
+          {% else %}
+          <span style="color:#999;font-size:12px;">无配额</span>
+          {% endif %}
+        </td>
+        <td style="color:#666;font-size:12px;">{{ row.first_seen|date:"Y-m-d" }}</td>
+        <td style="color:#666;font-size:12px;">{{ row.last_active|date:"Y-m-d H:i" }}</td>
+      </tr>
+      {% empty %}
+      <tr><td colspan="7" style="text-align:center;color:#999;padding:24px;">暂无数据</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+
+  {% if total_pages > 1 %}
+  <div class="pagination">
+    {% if page > 1 %}
+    <a href="?order_by={{ order_by }}&page={{ page|add:'-1' }}">上一页</a>
+    {% endif %}
+    <span style="font-size:13px;color:#666;">{{ page }} / {{ total_pages }}</span>
+    {% if page < total_pages %}
+    <a href="?order_by={{ order_by }}&page={{ page|add:'1' }}">下一页</a>
+    {% endif %}
+  </div>
+  {% endif %}
+
+</div>
+{% endblock %}
