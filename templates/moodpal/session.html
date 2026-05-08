@@ -1027,6 +1027,12 @@
                 input.style.overflowY = input.scrollHeight > maxHeight ? 'auto' : 'hidden';
             }
             input.addEventListener('input', grow);
+            input.addEventListener('keydown', (e) => {
+                if (e.key === 'Enter' && !e.shiftKey) {
+                    e.preventDefault();
+                    form.requestSubmit();
+                }
+            });
             input.addEventListener('focus', () => {
                 setTimeout(() => input.scrollIntoView({behavior: 'smooth', block: 'nearest'}), 280);
             });
