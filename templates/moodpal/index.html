@@ -63,12 +63,12 @@
     .moodpal-grid {
         display: grid;
         grid-template-columns: repeat(4, minmax(0, 1fr));
-        gap: 14px;
+        gap: 16px;
     }
 
     .persona-card {
         position: relative;
-        min-height: 560px;
+        min-height: 470px;
         padding: 0;
         border-radius: 8px;
         overflow: hidden;
@@ -76,7 +76,7 @@
         border: 1px solid rgba(255, 255, 255, 0.1);
         box-shadow: 0 18px 46px rgba(0, 0, 0, 0.22);
         display: grid;
-        grid-template-rows: 260px 1fr;
+        grid-template-rows: 250px 1fr;
     }
 
     .persona-media {
@@ -118,7 +118,7 @@
 
     .persona-body {
         display: grid;
-        gap: 12px;
+        gap: 14px;
         align-content: start;
         padding: 18px;
     }
@@ -134,39 +134,14 @@
         color: #8fe4d5;
         font-size: 14px;
         line-height: 1.45;
+        margin-top: 5px;
     }
 
-    .persona-description {
+    .persona-teaser {
         margin: 0;
-        min-height: 92px;
         color: #d1dde4;
-        line-height: 1.68;
+        line-height: 1.6;
         font-size: 14px;
-    }
-
-    .persona-problems {
-        display: flex;
-        flex-wrap: wrap;
-        gap: 7px;
-    }
-
-    .persona-problems span {
-        padding: 6px 9px;
-        border-radius: 999px;
-        background: rgba(255, 255, 255, 0.07);
-        border: 1px solid rgba(255, 255, 255, 0.1);
-        color: #eef4f7;
-        font-size: 12px;
-        white-space: nowrap;
-    }
-
-    .persona-start {
-        padding: 10px 11px;
-        border-left: 3px solid #63d6be;
-        background: rgba(99, 214, 190, 0.08);
-        color: #dcefea;
-        font-size: 13px;
-        line-height: 1.5;
     }
 
     .persona-model {
@@ -363,8 +338,8 @@
 <section class="moodpal-page">
     <div class="moodpal-shell">
         <div class="section-head">
-            <h3>选一个今天想聊的人</h3>
-            <p>选谁都可以随便开场，默认推荐从全能主理人开始。</p>
+            <h3>今天想找谁聊？</h3>
+            <p>不用想好怎么说，随便开个头就行。默认推荐从全能主理人开始。</p>
         </div>
 
         <div class="form-error" id="moodpal-form-error" {% if not form_error %}hidden{% endif %}>{{ form_error }}</div>
@@ -386,13 +361,7 @@
                         <h4>{{ persona.display_title }}</h4>
                         <div class="persona-subtitle">{{ persona.subtitle }}</div>
                     </div>
-                    <p class="persona-description">{{ persona.description }}</p>
-                    <div class="persona-problems">
-                        {% for problem in persona.problems %}
-                        <span>{{ problem }}</span>
-                        {% endfor %}
-                    </div>
-                    <div class="persona-start">可以这样开始：{{ persona.start_prompt }}</div>
+                    <p class="persona-teaser">{{ persona.teaser }}</p>
                     <div class="persona-model">
                         <label for="model-{{ persona.id }}">模型</label>
                         <select id="model-{{ persona.id }}" name="selected_model">
@@ -401,7 +370,7 @@
                             {% endfor %}
                         </select>
                     </div>
-                    <button type="submit">和{{ persona.display_title }}聊聊</button>
+                    <button type="submit">开始聊天</button>
                 </div>
             </form>
             {% endfor %}
