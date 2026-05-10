@@ -1,4 +1,5 @@
 {% extends 'common/base.html' %}
+{% load static %}
 
 {% block title %}MoodPal 会话{% endblock %}
 {% block body_class %}moodpal-session-page{% endblock %}
@@ -46,7 +47,7 @@
     }
 
     body.moodpal-session-page .header-content {
-        max-width: 1180px;
+        max-width: 1240px;
     }
 
     body.moodpal-session-page .logo {
@@ -79,8 +80,8 @@
     }
 
     body.moodpal-session-page .main-content {
-        max-width: 920px;
-        padding: 34px 32px 56px;
+        max-width: 1240px;
+        padding: 24px 32px 44px;
         min-height: calc(100vh - 124px);
     }
 
@@ -127,6 +128,8 @@
 
     .session-shell {
         display: grid;
+        grid-template-columns: minmax(0, 1fr) 320px;
+        align-items: start;
         gap: 14px;
     }
 
@@ -141,6 +144,30 @@
         padding: 16px 18px;
         display: grid;
         gap: 10px;
+        position: sticky;
+        top: 92px;
+    }
+
+    .persona-card-visual {
+        display: grid;
+        gap: 14px;
+    }
+
+    .persona-avatar-wrap {
+        width: 100%;
+        aspect-ratio: 1 / 1;
+        border-radius: 22px;
+        overflow: hidden;
+        border: 1px solid rgba(92, 76, 61, 0.1);
+        background: rgba(255, 255, 255, 0.48);
+        box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.54);
+    }
+
+    .persona-avatar-wrap img {
+        width: 100%;
+        height: 100%;
+        object-fit: cover;
+        display: block;
     }
 
     .persona-ribbon {
@@ -171,38 +198,35 @@
     }
 
     .session-topbar-main {
-        display: flex;
-        justify-content: space-between;
-        gap: 16px;
-        align-items: center;
+        display: grid;
+        gap: 12px;
+        align-items: start;
     }
 
     .session-heading {
         display: grid;
         gap: 4px;
-        max-width: 680px;
     }
 
     .session-heading h1 {
         margin: 0;
         font-family: 'Source Han Serif SC', 'Noto Serif SC', 'Songti SC', serif;
-        font-size: clamp(1.4rem, 2.8vw, 1.9rem);
-        line-height: 1.1;
-        letter-spacing: -0.02em;
+        font-size: 1.36rem;
+        line-height: 1.2;
+        letter-spacing: 0;
     }
 
     .persona-description {
         margin: 0;
         color: var(--ink-2);
-        font-size: 0.96rem;
-        line-height: 1.75;
-        max-width: 50ch;
+        font-size: 0.92rem;
+        line-height: 1.78;
     }
 
     .session-status {
         display: flex;
         align-items: flex-start;
-        justify-content: flex-end;
+        justify-content: flex-start;
         min-width: fit-content;
     }
 
@@ -225,11 +249,11 @@
     .session-disclosures {
         display: flex;
         gap: 8px;
-        flex-wrap: wrap;
+        flex-direction: column;
     }
 
     .session-disclosure {
-        flex: 0 1 220px;
+        flex: 1 1 auto;
         border-radius: 18px;
         border: 1px solid var(--line-soft);
         background: rgba(255, 255, 255, 0.48);
@@ -319,16 +343,20 @@
 
     .conversation-card {
         display: grid;
+        grid-template-rows: minmax(0, 1fr) auto;
         gap: 0;
         overflow: hidden;
         background: rgba(255, 251, 246, 0.9);
+        height: calc(100vh - 158px);
+        min-height: calc(100vh - 158px);
     }
 
     .chat-log {
         display: grid;
+        align-content: start;
         gap: 14px;
-        min-height: 52vh;
-        max-height: calc(100vh - 350px);
+        min-height: 0;
+        max-height: none;
         overflow-y: auto;
         padding: 22px 20px 18px;
         background:
@@ -512,6 +540,12 @@
         border: 1px solid rgba(201, 109, 93, 0.2);
     }
 
+    .session-share-btn {
+        background: rgba(121, 146, 132, 0.1);
+        color: var(--sage-deep);
+        border: 1px solid rgba(121, 146, 132, 0.18);
+    }
+
     .composer button {
         background: var(--sage-deep);
         color: #f8f4ee;
@@ -570,6 +604,7 @@
 
     .debug-panel {
         display: none;
+        grid-column: 1 / -1;
         border-radius: 24px;
         border: 1px solid rgba(85, 109, 97, 0.16);
         background: rgba(60, 78, 69, 0.06);
@@ -691,6 +726,19 @@
             padding: 24px 20px 44px;
         }
 
+        .session-shell {
+            grid-template-columns: 1fr;
+        }
+
+        .session-topbar {
+            position: static;
+        }
+
+        .persona-card-visual {
+            grid-template-columns: 96px minmax(0, 1fr);
+            align-items: center;
+        }
+
         .session-topbar-main,
         .composer-intro,
         .composer-footer {
@@ -702,8 +750,13 @@
             min-width: 0;
         }
 
+        .session-disclosures {
+            flex-direction: row;
+            flex-wrap: wrap;
+        }
+
         .session-disclosure {
-            flex-basis: 100%;
+            flex: 1 1 240px;
         }
 
         .composer-actions {
@@ -732,9 +785,15 @@
         }
 
         .chat-log {
-            min-height: 46vh;
+            min-height: 0;
             max-height: none;
             padding: 18px 14px 14px;
+        }
+
+        .conversation-card {
+            height: calc(100vh - 136px);
+            height: calc(100dvh - 136px);
+            min-height: 540px;
         }
 
         .chat-bubble {
@@ -798,14 +857,63 @@
 
 {% block content %}
 <section class="session-shell">
+    <section class="session-panel conversation-card">
+        <div class="safety-banner" id="safety-banner">
+            当前已切换到安全优先模式。普通角色化对话已暂停。如果你愿意，请先确认你现在是否安全，也可以只回复“安全”或“不安全”。
+        </div>
+        <div class="chat-log" id="chat-log">
+            {% if messages %}
+                {% for message in messages %}
+                <div class="chat-row {{ message.role }}">
+                    <div class="chat-bubble {{ message.role }}">
+                        <div class="chat-role">{% if message.role == 'user' %}你{% elif message.role == 'system' %}系统{% else %}{{ persona.title }}{% endif %}</div>
+                        <div class="chat-content">{{ message.content|linebreaksbr }}</div>
+                    </div>
+                </div>
+                {% endfor %}
+            {% else %}
+            <div class="chat-empty" id="chat-empty">
+                <strong>想聊什么都可以。</strong>
+                <p>可以从一句很小的话开始，比如：今天有点累，想随便说说。</p>
+            </div>
+            {% endif %}
+        </div>
+        <form class="composer" id="message-form">
+            <div class="composer-intro">
+                <strong>把这一刻放下来</strong>
+                <span id="session-status-text">{{ session.get_status_display }}</span>
+            </div>
+            <textarea id="message-input" name="content" placeholder="比如：我今天其实没出什么大事，但就是一直很累。"></textarea>
+            <div class="composer-footer">
+                <div class="composer-hint" id="composer-hint">结束后会先生成摘要草稿，再由你决定保留摘要，或把摘要与原始消息全部销毁。</div>
+                <div class="composer-actions">
+                    <button type="button" class="session-share-btn" id="session-share-btn">导出</button>
+                    <button type="button" class="session-end-btn" id="session-end-btn">结束会话</button>
+                    <button type="button" class="composer-mic" id="composer-mic-btn" title="语音输入" aria-label="开始语音输入">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 2a3 3 0 0 1 3 3v7a3 3 0 0 1-6 0V5a3 3 0 0 1 3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" y1="19" x2="12" y2="22"/><line x1="8" y1="22" x2="16" y2="22"/></svg>
+                        <span id="composer-mic-label">语音</span>
+                    </button>
+                    <button type="submit" id="message-submit">发送</button>
+                </div>
+            </div>
+            <div class="composer-error" id="message-error"></div>
+        </form>
+    </section>
+
     <header class="session-panel session-topbar">
-        <div class="persona-ribbon">
-            <span class="persona-kicker">MoodPal 陪伴会话</span>
-            <span class="persona-track">{{ persona.subtitle }}</span>
+        <div class="persona-card-visual">
+            <div class="persona-avatar-wrap">
+                <img src="{% static persona.avatar %}" alt="{{ persona.display_title }}头像">
+            </div>
+            <div class="persona-ribbon">
+                <span class="persona-kicker">MoodPal 陪伴会话</span>
+                <span class="persona-track">{{ persona.subtitle }}</span>
+            </div>
         </div>
         <div class="session-topbar-main">
             <div class="session-heading">
                 <h1>{{ persona.title }}</h1>
+                <p class="persona-description">{{ persona.description }}</p>
             </div>
             <div class="session-status">
                 <div class="status-chip" id="session-status-chip">{{ session.get_status_display }}</div>
@@ -860,48 +968,6 @@
             </details>
         </div>
     </header>
-
-    <section class="session-panel conversation-card">
-        <div class="safety-banner" id="safety-banner">
-            当前已切换到安全优先模式。普通角色化对话已暂停。如果你愿意，请先确认你现在是否安全，也可以只回复“安全”或“不安全”。
-        </div>
-        <div class="chat-log" id="chat-log">
-            {% if messages %}
-                {% for message in messages %}
-                <div class="chat-row {{ message.role }}">
-                    <div class="chat-bubble {{ message.role }}">
-                        <div class="chat-role">{% if message.role == 'user' %}你{% elif message.role == 'system' %}系统{% else %}{{ persona.title }}{% endif %}</div>
-                        <div class="chat-content">{{ message.content|linebreaksbr }}</div>
-                    </div>
-                </div>
-                {% endfor %}
-            {% else %}
-            <div class="chat-empty" id="chat-empty">
-                <strong>你可以从今天最难受的一小块说起。</strong>
-                <p>如果现在脑子很乱，也可以只放一句：我今天有点撑不住。</p>
-            </div>
-            {% endif %}
-        </div>
-        <form class="composer" id="message-form">
-            <div class="composer-intro">
-                <strong>把这一刻放下来</strong>
-                <span id="session-status-text">{{ session.get_status_display }}</span>
-            </div>
-            <textarea id="message-input" name="content" placeholder="比如：我今天其实没出什么大事，但就是一直很累。"></textarea>
-            <div class="composer-footer">
-                <div class="composer-hint" id="composer-hint">结束后会先生成摘要草稿，再由你决定保留摘要，或把摘要与原始消息全部销毁。</div>
-                <div class="composer-actions">
-                    <button type="button" class="session-end-btn" id="session-end-btn">结束会话</button>
-                    <button type="button" class="composer-mic" id="composer-mic-btn" title="语音输入" aria-label="开始语音输入">
-                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 2a3 3 0 0 1 3 3v7a3 3 0 0 1-6 0V5a3 3 0 0 1 3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" y1="19" x2="12" y2="22"/><line x1="8" y1="22" x2="16" y2="22"/></svg>
-                        <span id="composer-mic-label">语音</span>
-                    </button>
-                    <button type="submit" id="message-submit">发送</button>
-                </div>
-            </div>
-            <div class="composer-error" id="message-error"></div>
-        </form>
-    </section>
 
     <details class="debug-panel" id="debug-card">
         <summary>开发调试信息</summary>
@@ -998,6 +1064,7 @@
         const statusMeta = document.getElementById('session-status-meta');
         const statusCaption = document.getElementById('session-status-caption');
         const endButton = document.getElementById('session-end-btn');
+        const shareButton = document.getElementById('session-share-btn');
         const debugCard = document.getElementById('debug-card');
         const debugEngine = document.getElementById('debug-engine');
         const debugStage = document.getElementById('debug-stage');
@@ -1079,6 +1146,46 @@
             log.appendChild(row);
             row.scrollIntoView({behavior: 'smooth', block: 'end'});
             return row;
+        }
+
+        function getCurrentChatText() {
+            const rows = Array.from(log.querySelectorAll('.chat-row'));
+            const lines = rows.map((row) => {
+                if (row.id === 'typing-indicator-row') return '';
+                const role = row.querySelector('.chat-role')?.textContent?.trim() || '';
+                const content = row.querySelector('.chat-content')?.innerText?.trim() || '';
+                if (!content) return '';
+                return `${role}\n${content}`;
+            }).filter(Boolean);
+            const title = `MoodPal 会话 - ${sessionState.persona_title || '{{ persona.title|escapejs }}'}`;
+            const exportedAt = new Date().toLocaleString('zh-CN');
+            return [
+                title,
+                `导出时间：${exportedAt}`,
+                '',
+                lines.length ? lines.join('\n\n') : '还没有聊天内容。',
+                '',
+            ].join('\n');
+        }
+
+        function downloadChatText(text) {
+            const blob = new Blob([text], {type: 'text/plain;charset=utf-8'});
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            const stamp = new Date().toISOString().slice(0, 19).replace(/[:T]/g, '-');
+            a.href = url;
+            a.download = `moodpal-chat-${stamp}.txt`;
+            document.body.appendChild(a);
+            a.click();
+            a.remove();
+            URL.revokeObjectURL(url);
+        }
+
+        async function exportChat() {
+            const ok = window.confirm('导出的文件会包含当前聊天内容。请先确认其中没有你不想保存或转发的隐私信息，再继续导出。');
+            if (!ok) return;
+            const text = getCurrentChatText();
+            downloadChatText(text);
         }
 
         async function autoEnd() {
@@ -1271,6 +1378,7 @@
 
         form.addEventListener('submit', sendMessage);
         endButton.addEventListener('click', endSessionNow);
+        shareButton.addEventListener('click', exportChat);
         if (sessionState.crisis_active) {
             showSafetyMode();
         }

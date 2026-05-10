@@ -243,13 +243,13 @@ class ModelsAPIView(View):
         except Exception as e:
             logger.warning(f"Failed to fetch Doubao models: {e}")
 
-        # For other providers, use environment defaults
+        # For other providers, use configured model lists.
         providers = get_all_providers()
         for name in ALL_PROVIDERS:
             if name not in models_data:
                 config = providers.get(name)
                 if config:
-                    models_data[name] = [config.default_model]
+                    models_data[name] = list(dict.fromkeys(config.available_models or [config.default_model]))
                 else:
                     models_data[name] = []
 
