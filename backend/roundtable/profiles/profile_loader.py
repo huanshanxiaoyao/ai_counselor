@@ -82,6 +82,12 @@ class BaseProfileLoader:
         BaseProfileLoader._profiles = {}
         self._load_all_profiles()
 
+    def set_profile(self, name: str, profile: dict) -> None:
+        """将单个基础设定注入内存缓存（用于运行时新生成的档案，避免全量重扫）"""
+        if not name:
+            return
+        BaseProfileLoader._profiles[name] = profile
+
 
 def get_base_profile_loader() -> BaseProfileLoader:
     """获取基础设定加载器单例"""

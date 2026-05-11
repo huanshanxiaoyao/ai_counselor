@@ -238,6 +238,46 @@
   margin-bottom: 20px;
 }
 
+/* ── debug panel ── */
+.debug-panel {
+  display: none;
+  background: rgba(0,0,0,0.35);
+  border: 1px dashed rgba(218,165,32,0.35);
+  border-radius: 8px;
+  padding: 10px 14px;
+  margin: 0 0 16px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 0.72rem;
+  line-height: 1.55;
+  color: var(--muted);
+  max-height: 260px;
+  overflow-y: auto;
+}
+.debug-panel.active { display: block; }
+.debug-panel .dbg-title {
+  color: var(--gold);
+  font-weight: 600;
+  margin-bottom: 4px;
+}
+.debug-panel .dbg-row { display: flex; gap: 10px; }
+.debug-panel .dbg-name { flex: 0 0 120px; color: #c8c8c8; }
+.debug-panel .dbg-bar {
+  flex: 1;
+  height: 6px;
+  background: rgba(255,255,255,0.08);
+  border-radius: 3px;
+  overflow: hidden;
+  margin-top: 6px;
+}
+.debug-panel .dbg-bar .seg-offline { background: var(--gold); height: 100%; display: inline-block; }
+.debug-panel .dbg-bar .seg-config  { background: var(--green); height: 100%; display: inline-block; }
+.debug-panel .dbg-meta { flex: 0 0 auto; color: #aaa; font-size: 0.7rem; }
+.debug-panel .badge-gen    { color: var(--gold); }
+.debug-panel .badge-skip   { color: var(--green); }
+.debug-panel .badge-fail   { color: #ef9a9a; }
+.debug-panel .badge-cached { color: var(--green); }
+.debug-panel .badge-fresh  { color: var(--gold); }
+
 /* ── character cards ── */
 .char-card {
   background: rgba(255,255,255,0.08);
@@ -713,6 +753,7 @@
     <!-- Cache summary + timing -->
     <div id="cache-bar" class="cache-bar" style="display:none;"></div>
     <div id="timing-note" class="timing-note"></div>
+    <div id="debug-panel" class="debug-panel"></div>
 
     <!-- Section heading -->
     <div class="section-head"><span>嘉宾阵容</span></div>
@@ -776,6 +817,7 @@
   const errorMsg       = document.getElementById('error-msg');
   const timingNote     = document.getElementById('timing-note');
   const cacheBar       = document.getElementById('cache-bar');
+  const debugPanel     = document.getElementById('debug-panel');
 
   let configuredCharacters = [];
   let configureStartTime   = null;
@@ -847,6 +889,7 @@
 
       configuredCharacters = data.characters;
       displayCharacters(configuredCharacters);
+      renderConfigureDebug(data._debug, elapsed);
 
     } catch (error) {
       errorMsg.textContent = error.message || '配置失败，请稍后重试';
@@ -1081,6 +1124,48 @@
     const d = document.createElement('div');
     d.textContent = String(text);
     return d.innerHTML;
+  }
+
+  function renderConfigureDebug(dbg, frontendElapsedSec) {
+    if (!dbg) {
+      debugPanel.classList.remove('active');
+      return;
+    }
+    const items = (dbg.characters || []).slice();
+    const wallMs = dbg.wall_ms || 0;
+    const slowestMs = dbg.slowest_ms || items.reduce((m, x) => Math.max(m, x.total_ms || 0), 1);
+
+    const statusBadge = (s) => {
+      if (s === 'generated') return '<span class="badge-gen">[新建离线]</span>';
+      if (s === 'failed')    return '<span class="badge-fail">[离线失败·走兜底]</span>';
+      return '<span class="badge-skip">[已有离线]</span>';
+    };
+    const cacheBadge = (c) => c
+      ? '<span class="badge-cached">[话题缓存命中]</span>'
+      : '<span class="badge-fresh">[话题实时生成]</span>';
+
+    const rows = items.map(c => {
+      const offlinePct = slowestMs > 0 ? Math.round((c.offline_ms || 0) / slowestMs * 100) : 0;
+      const cfgPct     = slowestMs > 0 ? Math.round((c.configure_ms || 0) / slowestMs * 100) : 0;
+      return `
+        <div class="dbg-row" style="margin-top:6px;">
+          <div class="dbg-name">${escapeHtml(c.name)}</div>
+          <div class="dbg-bar">
+            <span class="seg-offline" style="width:${offlinePct}%;"></span><span class="seg-config" style="width:${cfgPct}%;"></span>
+          </div>
+          <div class="dbg-meta">${c.total_ms}ms · ${c.estimated_llm_calls}🤖</div>
+        </div>
+        <div style="padding-left:120px;">
+          离线 ${c.offline_ms}ms ${statusBadge(c.offline_status)} · 话题配置 ${c.configure_ms}ms ${cacheBadge(c.topic_cached)}
+        </div>`;
+    }).join('');
+
+    debugPanel.innerHTML = `
+      <div class="dbg-title">⚙ 配置嘉宾耗时分析</div>
+      <div>前端总耗时 ${frontendElapsedSec}s · 后端墙时 ${wallMs}ms · 估算 LLM 调用 <b>${dbg.estimated_llm_calls}</b> 次 · 瓶颈嘉宾 <b>${escapeHtml(dbg.slowest_character)}</b> (${dbg.slowest_ms}ms)</div>
+      <div style="margin-top:6px;">图例：<span style="color:var(--gold)">▇</span> 离线档案生成 · <span style="color:var(--green)">▇</span> 话题配置（viewpoints + articles）</div>
+      ${rows}`;
+    debugPanel.classList.add('active');
   }
 </script>
 {% endblock %}

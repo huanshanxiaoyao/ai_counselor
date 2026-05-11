@@ -195,14 +195,16 @@ class TokenQuotaState(models.Model):
         related_name='token_quota_states',
     )
     anon_id = models.CharField(max_length=64, blank=True, default='')
-    used_tokens = models.BigIntegerField(default=0)
-    quota_limit = models.BigIntegerField(default=0)
+    used_tokens = models.BigIntegerField(default=0, verbose_name='已用 tokens（实时）')
+    quota_limit = models.BigIntegerField(default=0, verbose_name='配额上限（实时·改这里生效）')
     last_warn_level = models.IntegerField(default=0)  # 0 / 80 / 90 / 100
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
     class Meta:
         db_table = 'roundtable_token_quota_states'
+        verbose_name = '① 实时配额状态（改这里·生效）'
+        verbose_name_plural = '① 实时配额状态（改这里·生效）'
         indexes = [
             models.Index(fields=['subject_type', 'updated_at']),
         ]
@@ -247,6 +249,8 @@ class TokenUsageLedger(models.Model):
 
     class Meta:
         db_table = 'roundtable_token_usage_ledger'
+        verbose_name = '③ Token 消耗流水（每次 LLM 调用）'
+        verbose_name_plural = '③ Token 消耗流水（每次 LLM 调用）'
         indexes = [
             models.Index(fields=['subject_key', 'created_at']),
             models.Index(fields=['source', 'created_at']),
@@ -285,8 +289,16 @@ class QuotaFeedback(models.Model):
         choices=Status.choices,
         default=Status.NEW,
     )
-    used_tokens = models.BigIntegerField(default=0)
-    quota_limit = models.BigIntegerField(default=0)
+    used_tokens = models.BigIntegerField(
+        default=0,
+        verbose_name='提交时已用 tokens（快照·只读）',
+        help_text='申请那一刻的快照，仅供审计，改这里不会生效',
+    )
+    quota_limit = models.BigIntegerField(
+        default=0,
+        verbose_name='提交时配额上限（快照·只读）',
+        help_text='申请那一刻的快照，仅供审计；要给用户提额请去「① 实时配额状态」',
+    )
     admin_note = models.TextField(blank=True, default='')
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
@@ -294,6 +306,8 @@ class QuotaFeedback(models.Model):
 
     class Meta:
         db_table = 'roundtable_quota_feedback'
+        verbose_name = '② 提额申请记录（仅审计）'
+        verbose_name_plural = '② 提额申请记录（仅审计）'
         indexes = [
             models.Index(fields=['status', 'created_at']),
             models.Index(fields=['subject_key', 'created_at']),

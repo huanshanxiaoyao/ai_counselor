@@ -735,6 +735,8 @@
       <p>正在分析话题，邀请嘉宾…</p>
     </div>
 
+    <div id="suggest-debug" style="display:none;background:rgba(0,0,0,0.35);border:1px dashed rgba(218,165,32,0.35);border-radius:8px;padding:8px 12px;margin:10px 0;font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:0.72rem;line-height:1.55;color:#bbb;"></div>
+
     <div id="characters-section" class="characters-section">
       <div class="section-divider"><span>为你推荐以下嘉宾（选择 3–8 位）</span></div>
       <div id="characters-grid" class="characters-grid"></div>
@@ -832,6 +834,9 @@
 
     btnGetChars.disabled = true;
     loadingIndicator.classList.add('active');
+    const suggestDbg = document.getElementById('suggest-debug');
+    suggestDbg.style.display = 'none';
+    const t0 = performance.now();
 
     try {
       const response = await csrfFetch('/roundtable/api/suggestions/', {
@@ -843,6 +848,16 @@
       const data = await response.json();
       if (data.error) throw new Error(data.error);
       displayCharacters(data.characters);
+
+      const frontendMs = Math.round(performance.now() - t0);
+      const dbg = data._debug || {};
+      const overheadMs = Math.max(0, frontendMs - (dbg.director_ms || 0));
+      suggestDbg.innerHTML = `
+        <div style="color:#daa520;font-weight:600;margin-bottom:2px;">⚙ 召集嘉宾耗时分析</div>
+        前端总耗时 <b>${frontendMs}ms</b> · DirectorAgent <b>${dbg.director_ms || 0}ms</b> · 网络/Django 开销 ~${overheadMs}ms<br>
+        LLM 调用 <b>${dbg.llm_calls || 0}</b> 次 · 推荐 ${dbg.requested_count || 0} 位 / 返回 ${dbg.returned_count || 0} 位${dbg.fallback_used ? ' · <span style="color:#ef9a9a;">[已降级为本地兜底]</span>' : ''}
+      `;
+      suggestDbg.style.display = 'block';
     } catch (error) {
       errorMessage.textContent = error.message || '获取嘉宾失败，请稍后再试';
       errorMessage.classList.add('active');

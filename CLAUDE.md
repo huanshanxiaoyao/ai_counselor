@@ -11,12 +11,15 @@ AI Counselor is a Django + Channels application with two features:
 ## Commands
 
 ### Development server
+
+**约定：本项目开发机端口固定为 `8002`**（避免和其他项目冲突）。所有本地访问 URL 都用 `http://127.0.0.1:8002/...`。
+
 ```bash
 # From project root (ASGI required for WebSocket support)
-cd backend && daphne -p 8000 backend.config.asgi:application
+cd backend && daphne -p 8002 backend.config.asgi:application
 
 # Or standard Django (no WebSocket)
-cd backend && python manage.py runserver
+cd backend && python manage.py runserver 8002
 ```
 
 ### Database migrations

@@ -4,6 +4,7 @@ Roundtable views - handles topic input, character suggestions, and setup.
 import json
 import logging
 import re
+import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from django.db.models import Q
 from django.http import JsonResponse
@@ -171,8 +172,13 @@ class SuggestionsView(View):
             # 调用导演 Agent 获取推荐；失败时降级为本地兜底推荐，避免 500 阻断流程
             fallback_used = False
             director = DirectorAgent()
+            director_ms = 0
+            llm_calls = 0
+            t0 = time.perf_counter()
             try:
                 characters = director.suggest_characters(topic, count=20)
+                director_ms = int((time.perf_counter() - t0) * 1000)
+                llm_calls = 1
                 if director.last_token_usage:
                     record_token_usage(
                         subject=quota_subject,
@@ -182,6 +188,7 @@ class SuggestionsView(View):
                         completion_tokens=director.last_token_usage.completion_tokens,
                     )
             except Exception:
+                director_ms = int((time.perf_counter() - t0) * 1000)
                 logger.exception("LLM suggestions failed, using fallback characters")
                 characters = _fallback_characters_for_topic(topic, count=20)
                 fallback_used = True
@@ -217,6 +224,13 @@ class SuggestionsView(View):
                 'count': len(characters),
                 'fallback': fallback_used,
                 'notice': '推荐服务暂不可用，已切换为默认嘉宾池' if fallback_used else '',
+                '_debug': {
+                    'director_ms': director_ms,
+                    'llm_calls': llm_calls,
+                    'fallback_used': fallback_used,
+                    'requested_count': 20,
+                    'returned_count': len(characters),
+                },
             }, json_dumps_params={'ensure_ascii': False})
 
         except json.JSONDecodeError:
@@ -252,55 +266,90 @@ class ConfigureView(View):
                 return JsonResponse({'error': '最多只能选择8个角色'}, status=400)
 
             # 机制2：当用户选定角色后，如果没有离线基础设定，则生成并保存离线设定
-            def ensure_offline_profile(name: str, era: str):
-                """确保角色有离线基础设定，如果没有则生成并保存"""
+            def ensure_offline_profile(name: str, era: str) -> tuple[str, bool]:
+                """返回 (status, success)：status ∈ {'skipped', 'generated', 'failed'}"""
                 try:
                     from .profiles import get_base_profile_loader, generate_offline_profile
                     profile_loader = get_base_profile_loader()
-                    if not profile_loader.has_profile(name):
-                        logger.info(f"Generating offline profile for: {name}")
-                        result = generate_offline_profile(name, era)
-                        if result:
-                            logger.info(f"Offline profile saved: {result}")
-                        else:
-                            logger.warning(f"Failed to generate offline profile for: {name}")
+                    if profile_loader.has_profile(name):
+                        return ('skipped', True)
+                    logger.info(f"Generating offline profile for: {name}")
+                    result = generate_offline_profile(name, era)
+                    if result:
+                        logger.info(f"Offline profile saved: {result}")
+                        return ('generated', True)
+                    logger.warning(f"Failed to generate offline profile for: {name}")
+                    return ('failed', False)
                 except Exception as e:
                     logger.warning(f"Error ensuring offline profile for {name}: {e}")
+                    return ('failed', False)
 
             # 为每个角色生成配置 - 并行执行
             def configure_single(char):
-                """单独配置一个角色"""
+                """单独配置一个角色，返回 (config_dict, debug_dict)"""
                 name = char.get('name', '')
                 era = char.get('era', '')
                 if not name:
-                    return None
+                    return None, None
 
-                # 机制2：确保有离线基础设定（会在后台异步保存）
-                ensure_offline_profile(name, era)
+                t_total = time.perf_counter()
 
+                t0 = time.perf_counter()
+                offline_status, _ = ensure_offline_profile(name, era)
+                offline_ms = int((time.perf_counter() - t0) * 1000)
+
+                t1 = time.perf_counter()
                 character_agent = CharacterAgent()
-                return character_agent.configure_character(
-                    character=char,
-                    topic=topic,
-                    era=era
+                config = character_agent.configure_character(
+                    character=char, topic=topic, era=era,
                 )
+                configure_ms = int((time.perf_counter() - t1) * 1000)
+                total_ms = int((time.perf_counter() - t_total) * 1000)
+
+                topic_cached = bool(config.get('_cached')) if config else False
+                # 估算 LLM 调用次数：
+                # offline=generated → 5; offline=failed → 走兜底 basic+lang ≈ 2; skipped → 0
+                # topic 未缓存 → +2 (viewpoints+articles)
+                if offline_status == 'generated':
+                    offline_calls = 5
+                elif offline_status == 'failed':
+                    offline_calls = 2
+                else:
+                    offline_calls = 0
+                topic_calls = 0 if topic_cached else 2
+                est_llm_calls = offline_calls + topic_calls
+
+                return config, {
+                    'name': name,
+                    'total_ms': total_ms,
+                    'offline_status': offline_status,
+                    'offline_ms': offline_ms,
+                    'configure_ms': configure_ms,
+                    'topic_cached': topic_cached,
+                    'estimated_llm_calls': est_llm_calls,
+                }
 
             # 使用线程池并行处理所有角色
             configured_characters = []
             errors = []
+            char_debug = []
+            t_wall = time.perf_counter()
             with ThreadPoolExecutor(max_workers=5) as executor:
                 futures = {executor.submit(configure_single, char): char for char in characters}
                 for future in as_completed(futures):
                     char = futures[future]
                     try:
-                        result = future.result()
+                        result, dbg = future.result()
                         if result:
                             configured_characters.append(result)
+                            if dbg:
+                                char_debug.append(dbg)
                         else:
                             errors.append(f"角色 {char.get('name', '未知')} 配置返回空结果")
                     except Exception as e:
                         logger.exception(f"Error configuring character {char.get('name', 'unknown')}")
                         errors.append(f"角色 {char.get('name', '未知')} 配置失败: {str(e)}")
+            wall_ms = int((time.perf_counter() - t_wall) * 1000)
 
             # 验证配置结果
             if len(configured_characters) < 3:
@@ -317,10 +366,22 @@ class ConfigureView(View):
 
             logger.info(f"Successfully configured {len(configured_characters)} characters")
 
+            char_debug.sort(key=lambda d: d.get('total_ms', 0), reverse=True)
+            total_llm = sum(d.get('estimated_llm_calls', 0) for d in char_debug)
+            slowest = char_debug[0] if char_debug else None
+
             return JsonResponse({
                 'topic': topic,
                 'characters': configured_characters,
-                'count': len(configured_characters)
+                'count': len(configured_characters),
+                '_debug': {
+                    'wall_ms': wall_ms,
+                    'character_count': len(configured_characters),
+                    'estimated_llm_calls': total_llm,
+                    'slowest_character': slowest['name'] if slowest else '',
+                    'slowest_ms': slowest['total_ms'] if slowest else 0,
+                    'characters': char_debug,
+                },
             }, json_dumps_params={'ensure_ascii': False})
 
         except json.JSONDecodeError:

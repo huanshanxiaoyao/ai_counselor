@@ -83,6 +83,12 @@ def generate_offline_profile(name: str, era: str = '') -> Optional[str]:
         with open(file_path, 'w', encoding='utf-8') as f:
             json.dump(profile, f, ensure_ascii=False, indent=2)
         logger.info(f"Profile saved: {file_path}")
+        # 同步注入 BaseProfileLoader 单例，避免下游 configure_character 仍然走重复生成路径
+        try:
+            from .profile_loader import get_base_profile_loader
+            get_base_profile_loader().set_profile(name, profile)
+        except Exception as cache_err:
+            logger.warning(f"Failed to inject {name} into profile loader cache: {cache_err}")
         return str(file_path)
     except Exception as e:
         logger.error(f"Failed to save profile {name}: {e}")

@@ -368,8 +368,14 @@ class CharacterAgent:
             }
             language_style = self._parse_language_style(base_profile)
         else:
-            basic_info = self._generate_basic_info(name, era, topic)
-            language_style = self._generate_language_style(name, era, basic_info.get('background', ''))
+            # 兜底路径（ensure_offline_profile 失败时触发）：basic_info 与 language_style 并行
+            # 牺牲 language_style 中的 background 上下文换取一轮串行耗时
+            import concurrent.futures
+            with concurrent.futures.ThreadPoolExecutor(max_workers=2) as executor:
+                bi_future = executor.submit(self._generate_basic_info, name, era, topic)
+                ls_future = executor.submit(self._generate_language_style, name, era, '')
+                basic_info = bi_future.result()
+                language_style = ls_future.result()
 
         # 2. 检查话题设定缓存（失败不影响配置）
         topic_cached = False
